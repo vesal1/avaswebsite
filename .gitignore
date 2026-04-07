@@ -1,0 +1,19 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Node / Next.js
+node_modules/
+.next/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log

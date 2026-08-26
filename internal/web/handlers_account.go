@@ -62,6 +62,12 @@ func (s *Server) renderAccount(w http.ResponseWriter, r *http.Request, status in
 		return
 	}
 
+	bonusSummary, err := s.bonus.Summary(ctx, user.ID)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+
 	if flash == "" && r.URL.Query().Get("welcome") != "" {
 		flash = "Welcome. Verify your identity and add funds to start betting."
 	}
@@ -71,6 +77,7 @@ func (s *Server) renderAccount(w http.ResponseWriter, r *http.Request, status in
 		"Flash":     flash,
 		"Error":     message,
 		"Limits":    forms,
+		"Bonus":     bonusSummary,
 		"Documents": documents,
 		"OpenBets":  openBets,
 		"Exclusion": exclusion,

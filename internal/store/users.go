@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -93,6 +94,45 @@ func (s *Store) ListUsers(ctx context.Context, limit int) ([]User, error) {
 		`SELECT `+userColumns+` FROM users ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: list users: %w", err)
+	}
+	defer rows.Close()
+	var out []User
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, user)
+	}
+	return out, rows.Err()
+}
+
+// SearchUsers finds accounts by email, display name or id, for the back
+// office. The match is a case-insensitive substring, which is what a support
+// agent with a half-remembered address actually needs.
+func (s *Store) SearchUsers(ctx context.Context, query string, limit int) ([]User, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return s.ListUsers(ctx, limit)
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	pattern := "%" + strings.ToLower(query) + "%"
+
+	// An exact id match is offered alongside the text search, since staff
+	// often paste an account number straight from a ticket.
+	var exactID int64
+	if id, err := strconv.ParseInt(query, 10, 64); err == nil {
+		exactID = id
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+userColumns+` FROM users
+		 WHERE LOWER(email) LIKE ? OR LOWER(display_name) LIKE ? OR id = ?
+		 ORDER BY id DESC LIMIT ?`, pattern, pattern, exactID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: search users: %w", err)
 	}
 	defer rows.Close()
 	var out []User

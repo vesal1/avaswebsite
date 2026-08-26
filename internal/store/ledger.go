@@ -6,6 +6,13 @@ import (
 	"fmt"
 )
 
+// IsUserAccount reports whether an account holds one customer's money and so
+// must always carry a user id. Cash and bonus are both per customer; the
+// book's own accounts are not.
+func IsUserAccount(account string) bool {
+	return account == AccountUserCash || account == AccountUserBonus
+}
+
 // Entry is one side of a proposed money movement.
 type Entry struct {
 	Account   string
@@ -38,8 +45,8 @@ func PostTxn(ctx context.Context, tx *Tx, at string, spec TxnSpec) (int64, error
 		if entry.AmountSat == 0 {
 			return 0, fmt.Errorf("%w: zero-value entry on %s", ErrUnbalanced, entry.Account)
 		}
-		if entry.Account == AccountUserCash && entry.UserID == 0 {
-			return 0, fmt.Errorf("%w: user_cash entry without a user", ErrUnbalanced)
+		if IsUserAccount(entry.Account) && entry.UserID == 0 {
+			return 0, fmt.Errorf("%w: %s entry without a user", ErrUnbalanced, entry.Account)
 		}
 		sum += entry.AmountSat
 	}
@@ -61,9 +68,9 @@ func PostTxn(ctx context.Context, tx *Tx, at string, spec TxnSpec) (int64, error
 
 	for _, entry := range spec.Entries {
 		userID := entry.UserID
-		if entry.Account != AccountUserCash {
-			// Non-user accounts stay unattributed; carrying a stray user id
-			// would corrupt the per-user balance sum.
+		if !IsUserAccount(entry.Account) {
+			// The book's own accounts stay unattributed; carrying a stray user
+			// id would corrupt the per-user balance sums.
 			userID = 0
 		}
 		if _, err := tx.ExecContext(ctx,
@@ -74,6 +81,59 @@ func PostTxn(ctx context.Context, tx *Tx, at string, spec TxnSpec) (int64, error
 		}
 	}
 	return txnID, nil
+}
+
+// PlayableBalanceTx is what a customer can stake: cash plus bonus. It is
+// deliberately a different number from BalanceSat, which is what they can
+// withdraw. Confusing the two is how a bonus ends up cashed out.
+func PlayableBalanceTx(ctx context.Context, tx *Tx, userID int64) (cash, bonus int64, err error) {
+	cash, err = BalanceSatTx(ctx, tx, userID)
+	if err != nil {
+		return 0, 0, err
+	}
+	bonus, err = BonusBalanceSatTx(ctx, tx, userID)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cash, bonus, nil
+}
+
+// SpendEntries splits a stake across cash and bonus, taking cash first.
+//
+// Cash first is the customer-favourable order: it clears their own money
+// before their promotional money, so a bonus they later forfeit costs them as
+// little as possible. The alternative order quietly protects the house.
+//
+// Returns the ledger entries for the debit side and how much came from bonus.
+func SpendEntries(userID, amountSat, cashAvailable, bonusAvailable int64) ([]Entry, int64, error) {
+	if amountSat <= 0 {
+		return nil, 0, fmt.Errorf("store: a stake must be positive")
+	}
+	if cashAvailable+bonusAvailable < amountSat {
+		return nil, 0, ErrInsufficient
+	}
+
+	fromCash := amountSat
+	if fromCash > cashAvailable {
+		fromCash = cashAvailable
+	}
+	if fromCash < 0 {
+		fromCash = 0
+	}
+	fromBonus := amountSat - fromCash
+
+	var entries []Entry
+	if fromCash > 0 {
+		entries = append(entries, Entry{
+			Account: AccountUserCash, UserID: userID, AmountSat: -fromCash,
+		})
+	}
+	if fromBonus > 0 {
+		entries = append(entries, Entry{
+			Account: AccountUserBonus, UserID: userID, AmountSat: -fromBonus,
+		})
+	}
+	return entries, fromBonus, nil
 }
 
 // BalanceSatTx returns a customer's withdrawable balance inside a transaction.

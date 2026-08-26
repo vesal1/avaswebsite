@@ -80,13 +80,14 @@ func (s *Service) SettleEvent(ctx context.Context, eventID int64, result Result,
 			continue
 		}
 
-		settled, paid, err := s.applyOutcomes(ctx, market, outcomes, actorID)
+		settled, paid, problems, err := s.applyOutcomes(ctx, market, outcomes, actorID)
 		if err != nil {
 			return report, err
 		}
 		report.MarketsSettled++
 		report.BetsSettled += settled
 		report.PaidOutSat += paid
+		report.Problems = append(report.Problems, problems...)
 	}
 
 	status := store.EventSettled
@@ -147,13 +148,14 @@ func (s *Service) SettleMarketManually(ctx context.Context, marketID int64, winn
 		}
 	}
 
-	settled, paid, err := s.applyOutcomes(ctx, market, outcomes, actorID)
+	settled, paid, problems, err := s.applyOutcomes(ctx, market, outcomes, actorID)
 	if err != nil {
 		return report, err
 	}
 	report.MarketsSettled = 1
 	report.BetsSettled = settled
 	report.PaidOutSat = paid
+	report.Problems = problems
 
 	return report, s.store.Audit(ctx, store.AuditEntry{
 		ActorUserID: actorID, Action: "market_settled_manually",
@@ -173,13 +175,14 @@ func (s *Service) VoidMarket(ctx context.Context, marketID, actorID int64, reaso
 	for _, selection := range market.Selections {
 		outcomes[selection.ID] = store.OutcomeVoid
 	}
-	settled, paid, err := s.applyOutcomes(ctx, market, outcomes, actorID)
+	settled, paid, problems, err := s.applyOutcomes(ctx, market, outcomes, actorID)
 	if err != nil {
 		return report, err
 	}
 	report.MarketsSettled = 1
 	report.BetsSettled = settled
 	report.PaidOutSat = paid
+	report.Problems = problems
 
 	return report, s.store.Audit(ctx, store.AuditEntry{
 		ActorUserID: actorID, Action: "market_voided",
@@ -187,14 +190,42 @@ func (s *Service) VoidMarket(ctx context.Context, marketID, actorID int64, reaso
 	})
 }
 
+// creditWagering tells the wagering recorder about bets that have just
+// settled. It runs after the settlement transaction has committed, so a
+// promotion bookkeeping failure can never roll back a payout that the customer
+// has already been shown. Failures are returned to be reported, not to undo.
+func (s *Service) creditWagering(ctx context.Context, settled []settledStake) []string {
+	if s.wagering == nil || len(settled) == 0 {
+		return nil
+	}
+	var problems []string
+	for _, stake := range settled {
+		if err := s.wagering.RecordStake(ctx, stake.UserID, stake.BetID,
+			stake.StakeSat, stake.OddsMilli, "sportsbook"); err != nil {
+			problems = append(problems,
+				fmt.Sprintf("wagering not credited for bet %d: %v", stake.BetID, err))
+		}
+	}
+	return problems
+}
+
+// settledStake is what the wagering recorder needs about a resolved bet.
+type settledStake struct {
+	UserID    int64
+	BetID     int64
+	StakeSat  int64
+	OddsMilli int64
+}
+
 // applyOutcomes writes selection outcomes, grades every affected bet leg and
 // settles the bets whose legs are all decided.
 //
 // The whole run is one transaction. A partial settlement would leave bets with
 // some legs graded and no payout, which is indistinguishable from a stuck bet.
-func (s *Service) applyOutcomes(ctx context.Context, market store.Market, outcomes map[int64]string, actorID int64) (int, int64, error) {
+func (s *Service) applyOutcomes(ctx context.Context, market store.Market, outcomes map[int64]string, actorID int64) (int, int64, []string, error) {
 	var betsSettled int
 	var paidOut int64
+	var settled []settledStake
 
 	err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		at := store.Timestamp(s.now())
@@ -224,44 +255,55 @@ func (s *Service) applyOutcomes(ctx context.Context, market store.Market, outcom
 		}
 
 		for betID := range affected {
-			settled, payout, err := s.settleBetIfComplete(ctx, tx, betID, at, actorID)
+			done, payout, stake, err := s.settleBetIfComplete(ctx, tx, betID, at, actorID)
 			if err != nil {
 				return err
 			}
-			if settled {
+			if done {
 				betsSettled++
 				paidOut += payout
+				settled = append(settled, stake)
 			}
 		}
 		return nil
 	})
-	return betsSettled, paidOut, err
+	if err != nil {
+		return betsSettled, paidOut, nil, err
+	}
+	// Outside the transaction: see creditWagering.
+	return betsSettled, paidOut, s.creditWagering(ctx, settled), nil
 }
 
 // settleBetIfComplete settles a bet once every leg is decided. A bet with an
 // undecided leg is left open.
-func (s *Service) settleBetIfComplete(ctx context.Context, tx *store.Tx, betID int64, at string, actorID int64) (bool, int64, error) {
+func (s *Service) settleBetIfComplete(ctx context.Context, tx *store.Tx, betID int64, at string, actorID int64) (bool, int64, settledStake, error) {
+	var stake settledStake
+
 	bet, err := store.GetBetTx(ctx, tx, betID)
 	if err != nil {
-		return false, 0, err
+		return false, 0, stake, err
 	}
 	if bet.Status != store.OutcomeOpen {
-		return false, 0, nil
+		return false, 0, stake, nil
 	}
 
 	status, payout, err := SettleBet(bet)
 	if err != nil {
-		return false, 0, err
+		return false, 0, stake, err
 	}
 	if status == "" {
-		return false, 0, nil // still has an open leg
+		return false, 0, stake, nil // still has an open leg
 	}
 
 	if err := store.SettleBetTx(ctx, tx, betID, status, payout, at); err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			return false, 0, nil
+			return false, 0, stake, nil
 		}
-		return false, 0, err
+		return false, 0, stake, err
+	}
+	stake = settledStake{
+		UserID: bet.UserID, BetID: bet.ID,
+		StakeSat: bet.StakeSat, OddsMilli: bet.OddsMilli,
 	}
 
 	// Release the escrowed stake, pay the customer what they are owed, and
@@ -293,9 +335,9 @@ func (s *Service) settleBetIfComplete(ctx context.Context, tx *store.Tx, betID i
 		CreatedBy: actorID,
 		Entries:   entries,
 	}); err != nil {
-		return false, 0, err
+		return false, 0, stake, err
 	}
-	return true, payout, nil
+	return true, payout, stake, nil
 }
 
 // SettleBet computes a bet's final status and payout from its legs.

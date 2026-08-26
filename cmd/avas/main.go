@@ -27,10 +27,12 @@ import (
 	"github.com/vesal1/avaswebsite/internal/auth"
 	"github.com/vesal1/avaswebsite/internal/betting"
 	"github.com/vesal1/avaswebsite/internal/bitcoin"
+	"github.com/vesal1/avaswebsite/internal/bonus"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
 	"github.com/vesal1/avaswebsite/internal/seed"
 	"github.com/vesal1/avaswebsite/internal/store"
+	"github.com/vesal1/avaswebsite/internal/treasury"
 	"github.com/vesal1/avaswebsite/internal/wallet"
 	"github.com/vesal1/avaswebsite/internal/web"
 )
@@ -98,6 +100,8 @@ type application struct {
 	compliance *compliance.Service
 	wallet     *wallet.Service
 	betting    *betting.Service
+	bonus      *bonus.Service
+	treasury   *treasury.Service
 	log        *slog.Logger
 }
 
@@ -149,11 +153,19 @@ func build() (*application, error) {
 	}
 
 	comp := compliance.New(db, cfg)
+	promotions := bonus.New(db, cfg)
+
+	// Settled stakes advance any wagering requirement the customer is
+	// carrying, so the betting engine is told where to report them.
+	book := betting.New(db, comp, cfg).WithWagering(promotions)
+
 	return &application{
 		cfg: cfg, store: db, provider: provider, compliance: comp,
-		wallet:  wallet.New(db, provider, comp, cfg),
-		betting: betting.New(db, comp, cfg),
-		log:     logger,
+		wallet:   wallet.New(db, provider, comp, cfg),
+		betting:  book,
+		bonus:    promotions,
+		treasury: treasury.New(db, cfg),
+		log:      logger,
 	}, nil
 }
 
@@ -266,7 +278,8 @@ func serve(args []string) error {
 
 	server, err := web.New(web.Options{
 		Config: app.cfg, Store: app.store, Betting: app.betting,
-		Wallet: app.wallet, Compliance: app.compliance, Logger: app.log,
+		Wallet: app.wallet, Compliance: app.compliance,
+		Bonus: app.bonus, Treasury: app.treasury, Logger: app.log,
 	})
 	if err != nil {
 		return err
@@ -342,6 +355,11 @@ func (a *application) background(ctx context.Context) {
 					"recorded", result.Recorded, "errors", result.Errors)
 			}
 		case <-upkeep.C:
+			if closed, err := a.bonus.ExpireOverdue(ctx); err != nil {
+				a.log.Error("expire bonuses", "error", err)
+			} else if closed > 0 {
+				a.log.Info("expired bonuses", "count", closed)
+			}
 			if removed, err := a.store.PurgeExpiredSessions(ctx); err != nil {
 				a.log.Error("purge sessions", "error", err)
 			} else if removed > 0 {

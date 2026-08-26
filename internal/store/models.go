@@ -67,9 +67,11 @@ const (
 // Ledger accounts.
 const (
 	AccountUserCash           = "user_cash"
+	AccountUserBonus          = "user_bonus"
 	AccountBetEscrow          = "bet_escrow"
 	AccountHouseRevenue       = "house_revenue"
 	AccountHouseFees          = "house_fees"
+	AccountHousePromotions    = "house_promotions"
 	AccountDepositSuspense    = "deposit_suspense"
 	AccountWithdrawalSuspense = "withdrawal_suspense"
 	AccountExternalBitcoin    = "external_bitcoin"
@@ -85,6 +87,7 @@ const (
 	TxnBetVoid            = "bet_void"
 	TxnAdjustment         = "adjustment"
 	TxnFee                = "fee"
+	TxnBonus              = "bonus"
 )
 
 // Deposit status values.

@@ -22,6 +22,60 @@
     </div>
   {{end}}
 
+  {{if .Data.Bonus.Active}}
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Your bonus</h2>
+      <a href="/promotions">How wagering works</a>
+    </div>
+    <div class="panel-body stack">
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="label">Bonus balance</div>
+          <div class="value">{{btc .Data.Bonus.BonusBalanceSat}}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Wagering left</div>
+          <div class="value">{{btc .Data.Bonus.TotalRemainingWageringSat}}</div>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Bonus</th><th class="num">Amount</th><th>Progress</th><th>Expires</th></tr></thead>
+          <tbody>
+            {{range .Data.Bonus.Active}}
+              <tr>
+                <td>{{if .Note}}{{.Note}}{{else}}{{title .Kind}}{{end}}</td>
+                <td class="num">{{btc .AmountSat}}</td>
+                <td class="small">
+                  {{btc .WageringDoneSat}} / {{btc .WageringRequiredSat}} BTC
+                  <div class="muted">{{pct .ProgressBps}} complete</div>
+                </td>
+                <td class="small">{{date .ExpiresAt}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      <div class="notice warn">
+        Withdrawals are paused while a bonus is active. Finish the wagering, or
+        give the bonus up below. Giving it up costs you the
+        {{btc .Data.Bonus.BonusBalanceSat}} BTC of bonus funds; your own money
+        is not touched.
+      </div>
+      <form method="post" action="/account/forfeit-bonus" class="field-row" style="align-items:end"
+            data-confirm="Give up your bonus? The bonus funds are lost. This cannot be undone.">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field">
+          <label for="forfeit-confirm">Type FORFEIT to give up the bonus</label>
+          <input type="text" id="forfeit-confirm" name="confirm" placeholder="FORFEIT">
+        </div>
+        <div class="field" style="flex:0 0 auto"><button class="danger" type="submit">Give up my bonus</button></div>
+      </form>
+    </div>
+  </section>
+  {{end}}
+
   <section class="panel">
     <div class="panel-head"><h2>Identity verification</h2></div>
     <div class="panel-body stack">

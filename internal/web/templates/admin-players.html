@@ -1,0 +1,42 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>Players</h1></div>
+    <div class="panel-body">
+      <form method="get" action="/admin/players" class="field-row" style="align-items:end">
+        <div class="field">
+          <label for="q">Search by email, name or account number</label>
+          <input type="search" id="q" name="q" value="{{.Data.Query}}" placeholder="punter@example.com">
+        </div>
+        <div class="field" style="flex:0 0 auto"><button type="submit">Search</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>{{len .Data.Players}} accounts</h2></div>
+    {{if .Data.Players}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Email</th><th>Name</th><th>Country</th>
+                <th>Role</th><th>Status</th><th>Identity</th><th></th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Players}}
+              <tr>
+                <td>{{.ID}}</td>
+                <td>{{.Email}}</td>
+                <td>{{.DisplayName}}</td>
+                <td class="muted">{{.Country}}</td>
+                <td class="muted">{{title .Role}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+                <td><span class="tag {{statusTag .KYCStatus}}">{{title .KYCStatus}}</span></td>
+                <td><a href="/admin/players/{{.ID}}">Open</a></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">No accounts matched.</p>{{end}}
+  </section>
+{{end}}

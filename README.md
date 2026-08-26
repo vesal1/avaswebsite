@@ -1,7 +1,7 @@
 # Avas Sportsbook
 
 A sports betting platform in Go, covering **168 sports** across 17 categories,
-funded in bitcoin.
+funded in bitcoin, running on PostgreSQL or SQLite.
 
 It is a complete working system: an odds board, a bet slip, singles and
 multiples, a settlement engine, a bitcoin wallet built on a double-entry
@@ -33,15 +33,57 @@ default remains. Run `avas check-ledger` on a schedule.
 
 ---
 
+## Installing against your own database
+
+The schema lives in versioned `.sql` files you can read, review and run:
+
+```
+internal/store/migrations/postgres/0001_initial_schema.sql
+internal/store/migrations/postgres/0002_bonus_and_adjustments.sql
+internal/store/migrations/sqlite/...
+```
+
+Point `AVAS_DB` at your server and let the app apply them:
+
+```bash
+createdb avas
+export AVAS_DB="postgres://avas:secret@localhost:5432/avas?sslmode=require"
+
+./avas migrate-status     # what is pending
+./avas migrate            # apply it
+```
+
+Or apply them by hand if you would rather your DBA drove:
+
+```bash
+psql "$AVAS_DB" -v ON_ERROR_STOP=1 -f internal/store/migrations/postgres/0001_initial_schema.sql
+psql "$AVAS_DB" -v ON_ERROR_STOP=1 -f internal/store/migrations/postgres/0002_bonus_and_adjustments.sql
+```
+
+`avas serve` refuses to start against a database that is behind the binary. A
+missing column should be a clear error at boot, not a failed bet at 2am.
+
+Migrations are recorded with a checksum. If an already-applied migration file
+is edited, the next run is refused rather than silently ignored — two
+environments believing they share a schema when they do not is worse than a
+loud failure.
+
+**A note on the schema.** Timestamps are `TEXT` holding RFC3339 UTC, and
+booleans are `INTEGER` 0/1, in both databases. That is deliberately
+unidiomatic for PostgreSQL: keeping one representation across both supported
+databases removes a class of timezone and type drift between environments.
+Reporting queries can cast with `col::timestamptz`.
+
 ## Quick start
 
 ```bash
 go build -o avas ./cmd/avas
 
-export AVAS_DB=avas.sqlite3
+export AVAS_DB=avas.sqlite3           # or a postgres:// URL
 export AVAS_ALLOWED_COUNTRIES=GB,IE   # jurisdictions you are licensed in
 export AVAS_GEO_DEFAULT=GB            # development only; see below
 
+./avas migrate                        # create the schema
 ./avas seed -events 200               # a board across every sport
 ./avas create-user -email you@example.com -password 'a long passphrase' -verified
 ./avas create-user -email boss@example.com -password 'a long passphrase' -role admin
@@ -56,6 +98,8 @@ withdraw loop can be walked without a bitcoin node: the wallet page has a
 
 | Command | What it does |
 |---|---|
+| `avas migrate` | Apply pending schema migrations |
+| `avas migrate-status` | Show which migrations have run |
 | `avas serve` | Run the web server and the background reconciliation jobs |
 | `avas seed -events N` | Load a deterministic demonstration board |
 | `avas create-user` | Create an account, optionally with a staff role |
@@ -69,6 +113,8 @@ withdraw loop can be walked without a bitcoin node: the wallet page has a
 ```
 cmd/avas              entrypoint and CLI
 internal/money        satoshi and odds arithmetic — integers only
+internal/bonus        promotions, wagering requirements, comps
+internal/treasury     manual cash adjustments with two-person approval
 internal/catalog      the 168 sports and every market kind
 internal/store        SQLite schema and all SQL
 internal/auth         Argon2id credentials, sessions, CSRF
@@ -115,6 +161,40 @@ included. A send that fails ambiguously is **never** retried automatically: it
 raises a critical flag for a human, because a retried payout is a duplicated
 payout.
 
+### Bonus money is not cash
+
+Promotional money lives in its own ledger account. It can be staked but not
+withdrawn, and becomes withdrawable cash only by meeting its wagering
+requirement. The rules are on the `/promotions` page rather than buried in
+terms, because promotions nobody can understand are how disputes start:
+
+- Staking draws on the customer's **own cash first**, so a bonus they later
+  give up costs them as little as possible. The other order quietly protects
+  the house.
+- Contribution rates differ by product (slots 100%, sports 50%, poker 20%) and
+  are published. A bonus clearing at full rate on near-even-money bets is a
+  promotion to arbitrage, not to play.
+- Stakes below an offer's minimum price do not clear it.
+- While a bonus is active, withdrawals are paused. The customer can finish the
+  wagering **or forfeit the bonus in one click** — their own money is never
+  touched either way. Trapping somebody's own funds behind a promotion they no
+  longer want is not acceptable.
+- Wagering credit is idempotent per stake, so replayed settlement cannot clear
+  a bonus that was not earned.
+
+### Manual adjustments are deliberately awkward
+
+Adjustments mint or destroy customer balance with no deposit or bet behind
+them, which makes them the most dangerous operation in the system. So: every
+one carries a written reason, anything at or above `AVAS_MANUAL_APPROVAL_SAT`
+needs a second person, nobody can approve their own, and a debit cannot
+overdraw. All of it lands in the audit trail.
+
+**Test credits** (`AVAS_ALLOW_TEST_CREDITS`) let an admin mint play money to
+exercise the system. They are refused in production by default, and enabling
+them there is reported by the config validator, because test money sitting
+alongside real customer money cannot be reconciled against a bank.
+
 ### Settlement
 
 Markets are graded from the posted result where a result can decide them:
@@ -158,7 +238,7 @@ Everything is environment-driven. Defaults are development defaults.
 |---|---|---|
 | `AVAS_ENV` | `development` | `production` turns on the safety checks |
 | `AVAS_SECRET_KEY` | dev placeholder | Must be ≥32 unique chars in production |
-| `AVAS_DB` | `avas.sqlite3` | SQLite path |
+| `AVAS_DB` | `avas.sqlite3` | PostgreSQL URL or SQLite file path |
 | `AVAS_HOST` / `AVAS_PORT` | `127.0.0.1` / `8000` | |
 | `AVAS_BRAND` | `Avas Sportsbook` | |
 | `AVAS_LICENCE` | *(unset)* | Shown in the footer; required in production |
@@ -187,6 +267,15 @@ Everything is environment-driven. Defaults are development defaults.
 | `AVAS_MAX_PARLAY_LEGS` | `15` |
 | `AVAS_MAX_LIABILITY_SAT` | `2000000000` |
 | `AVAS_MARGIN_BPS` | `500` (a 5% overround) |
+
+### Bonuses and manual money
+
+| Variable | Default | Notes |
+|---|---|---|
+| `AVAS_ALLOW_TEST_CREDITS` | `false` | Lets staff mint play money; refused in production by default |
+| `AVAS_MANUAL_APPROVAL_SAT` | `10000000` | Adjustments at or above this need a second approver |
+| `AVAS_MAX_MANUAL_ADJUST_SAT` | `1000000000` | Hard ceiling on any single adjustment |
+| `AVAS_DEFAULT_WAGERING_X100` | `500` | Default wagering multiplier, 500 = 5× |
 
 ### Bitcoin
 
@@ -265,6 +354,11 @@ Prices come back in all three formats plus `odds_milli`, the canonical integer.
 ```bash
 go test ./...
 go test -race ./internal/betting/ ./internal/wallet/
+
+# Run the suite against a real PostgreSQL server too. Each test gets its own
+# schema, so dialect drift is caught here rather than in production.
+AVAS_TEST_POSTGRES="postgres://postgres@localhost:5432/avas?sslmode=disable" \
+  go test ./internal/store/ -count=1
 ```
 
 Every money-moving test asserts the ledger invariants afterwards. A wallet that
@@ -281,7 +375,9 @@ produces the right balance through an unbalanced ledger is still broken.
 - [ ] Custody on BTCPay or Core, with cold storage and a hot-wallet float policy
 - [ ] `avas check-ledger` on a schedule, alerting on non-zero exit
 - [ ] Breached-password checking on registration
-- [ ] Migrate off SQLite if you expect concurrent writers
+- [ ] Run on PostgreSQL, not SQLite, if you expect concurrent writers
+- [ ] `AVAS_ALLOW_TEST_CREDITS` unset, and no test grants in the ledger
+- [ ] Promotion terms on `/promotions` reviewed against what you advertise
 - [ ] Deposit/withdrawal reconciliation against on-chain state
 - [ ] Independent review of the settlement rules against your published terms
 - [ ] Self-exclusion shared with any national scheme you are required to join

@@ -13,9 +13,11 @@ import (
 	"github.com/vesal1/avaswebsite/internal/auth"
 	"github.com/vesal1/avaswebsite/internal/betting"
 	"github.com/vesal1/avaswebsite/internal/bitcoin"
+	"github.com/vesal1/avaswebsite/internal/bonus"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
 	"github.com/vesal1/avaswebsite/internal/store"
+	"github.com/vesal1/avaswebsite/internal/treasury"
 	"github.com/vesal1/avaswebsite/internal/wallet"
 )
 
@@ -42,11 +44,14 @@ func newTestServer(t *testing.T) *testServer {
 	comp := compliance.New(db, cfg)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
+	promotions := bonus.New(db, cfg)
 	server, err := New(Options{
 		Config: cfg, Store: db, Compliance: comp,
-		Wallet:  wallet.New(db, provider, comp, cfg),
-		Betting: betting.New(db, comp, cfg),
-		Logger:  logger,
+		Wallet:   wallet.New(db, provider, comp, cfg),
+		Betting:  betting.New(db, comp, cfg).WithWagering(promotions),
+		Bonus:    promotions,
+		Treasury: treasury.New(db, cfg),
+		Logger:   logger,
 	})
 	if err != nil {
 		t.Fatalf("build server: %v", err)
@@ -77,11 +82,19 @@ func (ts *testServer) post(t *testing.T, path string, form url.Values, headers m
 	return rec
 }
 
+func TestIncompleteWiringIsRefused(t *testing.T) {
+	// A nil service that panics on the first request is worse than a server
+	// that will not start.
+	if _, err := New(Options{}); err == nil {
+		t.Error("New with no dependencies should fail")
+	}
+}
+
 func TestPublicPagesRender(t *testing.T) {
 	ts := newTestServer(t)
 	for _, path := range []string{
 		"/", "/sports", "/sports/football", "/sports?q=snooker",
-		"/rules", "/responsible-gambling", "/healthz",
+		"/rules", "/responsible-gambling", "/promotions", "/healthz",
 		"/login", "/register",
 		"/api/sports", "/api/sports/football/events",
 	} {

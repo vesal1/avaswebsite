@@ -53,6 +53,12 @@ type Config struct {
 	BitcoindPass   string
 	BitcoindWallet string
 
+	// bonuses and manual money movement
+	AllowTestCredits    bool
+	ManualApprovalSat   int64
+	MaxManualAdjustSat  int64
+	DefaultWageringX100 int64
+
 	// compliance
 	AllowedCountries  []string
 	BlockedCountries  []string
@@ -106,6 +112,14 @@ func Load() *Config {
 		BitcoindPass:   env("AVAS_BITCOIND_PASSWORD", ""),
 		BitcoindWallet: env("AVAS_BITCOIND_WALLET", ""),
 
+		// Test money must not coexist with real customer money. Production
+		// refuses it unless somebody has deliberately said otherwise, and
+		// Validate warns loudly when they have.
+		AllowTestCredits:    envBool("AVAS_ALLOW_TEST_CREDITS", false),
+		ManualApprovalSat:   envInt64("AVAS_MANUAL_APPROVAL_SAT", 10_000_000),
+		MaxManualAdjustSat:  envInt64("AVAS_MAX_MANUAL_ADJUST_SAT", 1_000_000_000),
+		DefaultWageringX100: envInt64("AVAS_DEFAULT_WAGERING_X100", 500),
+
 		// An empty allowlist blocks everyone. Failing closed is the only safe
 		// default: an unlicensed jurisdiction must never be served by accident.
 		AllowedCountries:  envList("AVAS_ALLOWED_COUNTRIES", ""),
@@ -157,6 +171,10 @@ func (c *Config) Validate() []string {
 	}
 	if strings.Contains(c.LicenceText, "not configured") {
 		problems = append(problems, "AVAS_LICENCE must carry the operating licence details shown in the footer")
+	}
+	if c.AllowTestCredits {
+		problems = append(problems,
+			"AVAS_ALLOW_TEST_CREDITS=true lets staff mint money that is not backed by a deposit")
 	}
 	if !c.KYCRequiredToBet {
 		problems = append(problems, "AVAS_KYC_FOR_BETTING=false disables identity checks required by AML rules")

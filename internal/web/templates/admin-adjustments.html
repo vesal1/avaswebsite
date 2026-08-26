@@ -1,0 +1,77 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head"><h1>Manual adjustments</h1></div>
+    <div class="panel-body">
+      <div class="notice info">
+        Adjustments move real customer money with no deposit or bet behind
+        them. Anything at or above {{btc .Data.ApprovalSat}} BTC waits here for
+        a second person, and nobody can release their own request.
+      </div>
+    </div>
+    {{if .Data.Pending}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Requested</th><th>Account</th><th class="num">Amount</th>
+                <th>Reason</th><th>Requested by</th><th>Decision</th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Pending}}
+              <tr>
+                <td>{{.ID}}</td>
+                <td class="small">{{datetime .RequestedAt}}</td>
+                <td><a href="/admin/players/{{.UserID}}">#{{.UserID}}</a></td>
+                <td class="num">{{btc .AmountSat}}</td>
+                <td class="muted small">{{.Reason}}</td>
+                <td class="small">#{{.RequestedBy}}</td>
+                <td>
+                  {{if eq .RequestedBy $ctx.Data.ViewerID}}
+                    <span class="muted small">You requested this; somebody else must release it.</span>
+                  {{else}}
+                    <form method="post" action="/admin/adjustments/{{.ID}}/approve" class="field-row" style="gap:6px;margin-bottom:6px"
+                          data-confirm="Release this adjustment? It moves real money.">
+                      <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                      <input type="text" name="note" placeholder="What you checked" style="width:150px">
+                      <button type="submit">Approve</button>
+                    </form>
+                    <form method="post" action="/admin/adjustments/{{.ID}}/reject" class="field-row" style="gap:6px">
+                      <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                      <input type="text" name="note" placeholder="Why not" style="width:150px">
+                      <button class="secondary" type="submit">Reject</button>
+                    </form>
+                  {{end}}
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">Nothing waiting for a decision.</p>{{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Recently decided</h2></div>
+    {{if .Data.Recent}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>#</th><th>Account</th><th class="num">Amount</th><th>Reason</th>
+                     <th>Status</th><th>Decided by</th><th>Note</th></tr></thead>
+          <tbody>
+            {{range .Data.Recent}}
+              <tr>
+                <td>{{.ID}}</td>
+                <td><a href="/admin/players/{{.UserID}}">#{{.UserID}}</a></td>
+                <td class="num">{{btc .AmountSat}}</td>
+                <td class="muted small">{{.Reason}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+                <td class="small">{{if .DecidedBy}}#{{.DecidedBy}}{{else}}—{{end}}</td>
+                <td class="muted small">{{.DecisionNote}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">Nothing yet.</p>{{end}}
+  </section>
+{{end}}

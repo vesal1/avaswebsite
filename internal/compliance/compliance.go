@@ -37,6 +37,7 @@ const (
 	CodeManualReview  Code = "manual_review"
 	CodeFlagged       Code = "flagged"
 	CodeInvalidInput  Code = "invalid_input"
+	CodeBonusActive   Code = "bonus_active"
 )
 
 // Refusal is a compliance rejection carrying a customer-facing explanation.
@@ -370,6 +371,29 @@ func (s *Service) CheckWithdrawal(ctx context.Context, user store.User, amountSa
 	if flagged {
 		return decision, refuse(CodeFlagged,
 			"This withdrawal is on hold pending a review of your account. Contact %s.", s.cfg.SupportMail)
+	}
+
+	// A live bonus with unmet wagering stands between the customer and a
+	// withdrawal. They are told plainly what it would cost to forfeit it
+	// rather than being left to work out why the button does nothing.
+	grants, err := s.store.BonusGrantsForUser(ctx, user.ID, store.GrantActive)
+	if err != nil {
+		return decision, fmt.Errorf("compliance: check bonuses: %w", err)
+	}
+	if len(grants) > 0 {
+		var remaining int64
+		for _, grant := range grants {
+			remaining += grant.RemainingWageringSat()
+		}
+		bonusBalance, err := s.store.BonusBalanceSat(ctx, user.ID)
+		if err != nil {
+			return decision, fmt.Errorf("compliance: bonus balance: %w", err)
+		}
+		return decision, refuse(CodeBonusActive,
+			"You have an active bonus with %s BTC of wagering left. Finish the wagering, "+
+				"or forfeit the bonus from your account page to withdraw now. "+
+				"Forfeiting would give up %s BTC of bonus funds; your own money is not affected.",
+			money.FormatBTC(remaining), money.FormatBTC(bonusBalance))
 	}
 
 	if s.cfg.ManualReviewSat > 0 && amountSat >= s.cfg.ManualReviewSat {

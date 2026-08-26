@@ -56,6 +56,17 @@ type Placed struct {
 	// PriceMoved is set when the bet was struck at a different price from the
 	// one shown, which the customer had agreed to accept.
 	PriceMoved bool
+	// FromBonusSat is how much of the stake came out of promotional funds
+	// rather than the customer's own money.
+	FromBonusSat int64
+}
+
+// WageringRecorder is told when a stake has resolved, so a promotional
+// wagering requirement can advance. It is an interface rather than a direct
+// dependency on the bonus package: the betting engine should not have to know
+// what a promotion is, only that something may want to hear about a stake.
+type WageringRecorder interface {
+	RecordStake(ctx context.Context, userID, refID, stakeSat, oddsMilli int64, source string) error
 }
 
 // Service places and settles bets.
@@ -63,12 +74,19 @@ type Service struct {
 	store      *store.Store
 	compliance *compliance.Service
 	cfg        *config.Config
+	wagering   WageringRecorder
 	now        func() time.Time
 }
 
 // New builds a betting service.
 func New(s *store.Store, comp *compliance.Service, cfg *config.Config) *Service {
 	return &Service{store: s, compliance: comp, cfg: cfg, now: func() time.Time { return s.Now() }}
+}
+
+// WithWagering attaches a wagering recorder.
+func (s *Service) WithWagering(recorder WageringRecorder) *Service {
+	s.wagering = recorder
+	return s
 }
 
 // Quote is a priced, validated slip that has not been struck.
@@ -282,13 +300,21 @@ func (s *Service) Place(ctx context.Context, user store.User, slip Slip) (Placed
 			}
 		}
 
-		balance, err := store.BalanceSatTx(ctx, tx, user.ID)
+		// Cash and bonus are both stakeable, and the stake draws on cash
+		// first. Only cash is withdrawable, so the two are counted separately
+		// rather than added into one "balance" that would let a bonus be
+		// treated as money the customer owns.
+		cash, bonusAvailable, err := store.PlayableBalanceTx(ctx, tx, user.ID)
 		if err != nil {
 			return err
 		}
-		if balance < slip.StakeSat {
-			return fmt.Errorf("%w: balance is %s BTC, stake is %s BTC",
-				ErrInsufficientFunds, money.FormatBTC(balance), money.FormatBTC(slip.StakeSat))
+		if cash+bonusAvailable < slip.StakeSat {
+			return fmt.Errorf("%w: you have %s BTC to stake, and the stake is %s BTC",
+				ErrInsufficientFunds, money.FormatBTC(cash+bonusAvailable), money.FormatBTC(slip.StakeSat))
+		}
+		debits, fromBonus, err := store.SpendEntries(user.ID, slip.StakeSat, cash, bonusAvailable)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrInsufficientFunds, err)
 		}
 
 		at := store.Timestamp(s.now())
@@ -300,22 +326,22 @@ func (s *Service) Place(ctx context.Context, user store.User, slip Slip) (Placed
 		if err != nil {
 			return err
 		}
+		entries := append(debits, store.Entry{
+			Account: store.AccountBetEscrow, AmountSat: slip.StakeSat,
+		})
 		if _, err := store.PostTxn(ctx, tx, at, store.TxnSpec{
 			Kind:    store.TxnBetStake,
 			Memo:    fmt.Sprintf("Stake on bet %d", betID),
 			RefType: "bet",
 			RefID:   betID,
-			Entries: []store.Entry{
-				{Account: store.AccountUserCash, UserID: user.ID, AmountSat: -slip.StakeSat},
-				{Account: store.AccountBetEscrow, AmountSat: slip.StakeSat},
-			},
+			Entries: entries,
 		}); err != nil {
 			return err
 		}
 
 		placed = Placed{
 			BetID: betID, Kind: kind, StakeSat: slip.StakeSat, OddsMilli: combined,
-			PotentialPayoutSat: payout, PriceMoved: priceMoved,
+			PotentialPayoutSat: payout, PriceMoved: priceMoved, FromBonusSat: fromBonus,
 		}
 		return nil
 	})

@@ -16,6 +16,7 @@
       <a href="/sports">Sports</a>
       <a href="/betslip">Bet slip{{if .SlipCount}} ({{.SlipCount}}){{end}}</a>
       {{if .User}}<a href="/bets">My bets</a>{{end}}
+      <a href="/promotions">Promotions</a>
       <a href="/rules">Rules</a>
       <a href="/responsible-gambling">Safer gambling</a>
       {{if and .User .User.IsStaff}}<a href="/admin">Back office</a>{{end}}
@@ -60,6 +61,7 @@
   <div class="footer-inner">
     <nav>
       <a href="/rules">Betting rules</a>
+      <a href="/promotions">Promotions</a>
       <a href="/responsible-gambling">Safer gambling</a>
       <a href="/sports">All sports</a>
       <a href="mailto:{{.Support}}">Support</a>

@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"github.com/vesal1/avaswebsite/internal/betting"
+	"github.com/vesal1/avaswebsite/internal/bonus"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
 	"github.com/vesal1/avaswebsite/internal/store"
+	"github.com/vesal1/avaswebsite/internal/treasury"
 	"github.com/vesal1/avaswebsite/internal/wallet"
 )
 
@@ -59,6 +61,8 @@ type Server struct {
 	betting    *betting.Service
 	wallet     *wallet.Service
 	compliance *compliance.Service
+	bonus      *bonus.Service
+	treasury   *treasury.Service
 	log        *slog.Logger
 	// templates holds one parsed set per page. Each page defines a template
 	// named "content" that the shared layout calls, so the sets have to be
@@ -75,18 +79,40 @@ type Options struct {
 	Betting    *betting.Service
 	Wallet     *wallet.Service
 	Compliance *compliance.Service
+	Bonus      *bonus.Service
+	Treasury   *treasury.Service
 	Logger     *slog.Logger
 }
 
 // New builds the HTTP server.
+//
+// Missing dependencies are refused here rather than left to panic on the first
+// request that needs them. A server that starts and then dies on a customer's
+// wallet page is worse than one that never starts.
 func New(opts Options) (*Server, error) {
+	for name, present := range map[string]bool{
+		"Config":     opts.Config != nil,
+		"Store":      opts.Store != nil,
+		"Betting":    opts.Betting != nil,
+		"Wallet":     opts.Wallet != nil,
+		"Compliance": opts.Compliance != nil,
+		"Bonus":      opts.Bonus != nil,
+		"Treasury":   opts.Treasury != nil,
+		"Logger":     opts.Logger != nil,
+	} {
+		if !present {
+			return nil, fmt.Errorf("web: %s is required", name)
+		}
+	}
+
 	templates, err := parseTemplates()
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{
 		cfg: opts.Config, store: opts.Store, betting: opts.Betting,
-		wallet: opts.Wallet, compliance: opts.Compliance, log: opts.Logger,
+		wallet: opts.Wallet, compliance: opts.Compliance,
+		bonus: opts.Bonus, treasury: opts.Treasury, log: opts.Logger,
 		templates: templates, mux: http.NewServeMux(),
 		now: func() time.Time { return opts.Store.Now() },
 	}
@@ -160,6 +186,20 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/withdrawals/{id}/reject", s.requireCompliance(s.handleRejectWithdrawal))
 	s.mux.HandleFunc("GET /admin/flags", s.requireCompliance(s.handleAdminFlags))
 	s.mux.HandleFunc("POST /admin/flags/{id}/resolve", s.requireCompliance(s.handleResolveFlag))
+	s.mux.HandleFunc("GET /promotions", s.handlePromotions)
+	s.mux.HandleFunc("POST /account/forfeit-bonus", s.requireCustomer(s.handleForfeitBonus))
+
+	s.mux.HandleFunc("GET /admin/players", s.requireStaff(s.handleAdminPlayers))
+	s.mux.HandleFunc("GET /admin/players/{id}", s.requireStaff(s.handleAdminPlayer))
+	s.mux.HandleFunc("POST /admin/players/{id}/bonus", s.requireCompliance(s.handleAdminGrantBonus))
+	s.mux.HandleFunc("POST /admin/players/{id}/adjust", s.requireCompliance(s.handleAdminAdjust))
+	s.mux.HandleFunc("POST /admin/bonus/{id}/cancel", s.requireCompliance(s.handleAdminCancelBonus))
+	s.mux.HandleFunc("GET /admin/adjustments", s.requireCompliance(s.handleAdminAdjustments))
+	s.mux.HandleFunc("POST /admin/adjustments/{id}/approve", s.requireCompliance(s.handleApproveAdjustment))
+	s.mux.HandleFunc("POST /admin/adjustments/{id}/reject", s.requireCompliance(s.handleRejectAdjustment))
+	s.mux.HandleFunc("GET /admin/offers", s.requireCompliance(s.handleAdminOffers))
+	s.mux.HandleFunc("POST /admin/offers", s.requireCompliance(s.handleCreateOffer))
+	s.mux.HandleFunc("POST /admin/offers/{id}/toggle", s.requireCompliance(s.handleToggleOffer))
 	s.mux.HandleFunc("GET /admin/kyc", s.requireCompliance(s.handleAdminKYC))
 	s.mux.HandleFunc("POST /admin/kyc/{id}/decide", s.requireCompliance(s.handleDecideKYC))
 	s.mux.HandleFunc("POST /admin/sync-deposits", s.requireStaff(s.handleSyncDeposits))

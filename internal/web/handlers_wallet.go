@@ -41,12 +41,18 @@ func (s *Server) renderWallet(w http.ResponseWriter, r *http.Request, status int
 		s.serverError(w, r, err)
 		return
 	}
+	bonusSummary, err := s.bonus.Summary(ctx, user.ID)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
 
 	s.render(w, r, status, "wallet.html", map[string]any{
 		"Title":         "Wallet",
 		"Flash":         flash,
 		"Error":         message,
 		"Summary":       summary,
+		"Bonus":         bonusSummary,
 		"Deposits":      deposits,
 		"Withdrawals":   withdrawals,
 		"Ledger":        ledger,

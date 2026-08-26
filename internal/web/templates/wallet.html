@@ -12,7 +12,21 @@
         </div>
         <div class="stat"><div class="label">On open bets</div><div class="value">{{btc $s.EscrowedInBetsSat}}</div></div>
         <div class="stat"><div class="label">Withdrawals in flight</div><div class="value">{{btc $s.PendingWithdrawSat}}</div></div>
+        {{if .Data.Bonus.BonusBalanceSat}}
+        <div class="stat">
+          <div class="label">Bonus (not withdrawable)</div>
+          <div class="value">{{btc .Data.Bonus.BonusBalanceSat}}</div>
+        </div>
+        {{end}}
       </div>
+      {{if .Data.Bonus.Active}}
+        <div class="notice warn">
+          You have an active bonus with {{btc .Data.Bonus.TotalRemainingWageringSat}} BTC
+          of wagering left, and withdrawals are paused until it clears. You can
+          finish the wagering, or give the bonus up from your
+          <a href="/account">account page</a> — your own money is not affected.
+        </div>
+      {{end}}
       <p class="hint">
         Fiat values are indicative only, converted at a reference rate. Your
         balance is held in bitcoin and settled in bitcoin.

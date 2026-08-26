@@ -1,0 +1,25 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>My poker hands</h1><a href="/poker/verify">Verify a hand</a></div>
+    {{if .Data.Hands}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th class="num">Hand</th><th>Board</th><th class="num">Pot</th>
+                     <th class="num">Rake</th><th>Dealt</th><th></th></tr></thead>
+          <tbody>
+            {{range .Data.Hands}}
+              <tr>
+                <td class="num">{{.HandNumber}}</td>
+                <td class="small">{{if .Board}}{{.Board}}{{else}}—{{end}}</td>
+                <td class="num">{{btc .PotSat}}</td>
+                <td class="num">{{btc .RakeSat}}</td>
+                <td class="small">{{datetime .StartedAt}}</td>
+                <td><a href="/poker/hands/{{.ID}}">Open</a></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">You have not played a hand yet.</p>{{end}}
+  </section>
+{{end}}

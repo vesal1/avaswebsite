@@ -1,0 +1,85 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Poker tables</h1>
+      <span class="muted small">Rake taken to date: {{btc .Data.RakeSat}} BTC</span>
+    </div>
+    <div class="panel-body">
+      <div class="notice info">
+        Chips at a table and the ledger balance held for it must match exactly.
+        A mismatch means chips have been created or lost, and is the one thing
+        at a poker table that must never happen quietly.
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Table</th><th class="num">Blinds</th><th class="num">Buy-in</th><th>Rake</th>
+              <th class="num">Chips</th><th class="num">Ledger</th><th>Reconciled</th>
+              <th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Rows}}
+            <tr>
+              <td>
+                <a href="/poker/tables/{{.Table.ID}}">{{.Table.Name}}</a>
+                <div class="muted small">{{.Table.MaxSeats}} seats{{if .Table.VideoEnabled}} · camera &amp; mic{{end}}</div>
+              </td>
+              <td class="num">{{btc .Table.SmallBlindSat}} / {{btc .Table.BigBlindSat}}</td>
+              <td class="num">{{btc .Table.MinBuyInSat}} – {{btc .Table.MaxBuyInSat}}</td>
+              <td class="small">{{pct .Table.RakeBps}} cap {{btc .Table.RakeCapSat}}{{if .Table.NoFlopNoDrop}}<div class="muted">No flop, no drop</div>{{end}}</td>
+              <td class="num">{{if .Live}}{{btc .ChipsSat}}{{else}}—{{end}}</td>
+              <td class="num">{{btc .LedgerSat}}</td>
+              <td>
+                {{if .Balanced}}<span class="tag good">Balanced</span>
+                {{else}}<span class="tag bad">Out by {{btc (sub .LedgerSat .ChipsSat)}}</span>{{end}}
+              </td>
+              <td><span class="tag {{if .Table.Active}}good{{else}}neutral{{end}}">{{if .Table.Active}}Open{{else}}Closed{{end}}</span></td>
+              <td>
+                <form method="post" action="/admin/poker/{{.Table.ID}}/toggle">
+                  <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                  <input type="hidden" name="active" value="{{if .Table.Active}}0{{else}}1{{end}}">
+                  <button class="secondary" type="submit">{{if .Table.Active}}Close{{else}}Open{{end}}</button>
+                </form>
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Open a table</h2></div>
+    <div class="panel-body">
+      <form method="post" action="/admin/poker" class="stack">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field-row">
+          <div class="field">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" required placeholder="Micro 3">
+          </div>
+          <div class="field">
+            <label for="big_blind">Big blind (BTC)</label>
+            <input type="text" id="big_blind" name="big_blind" required placeholder="0.00000200">
+            <p class="hint">Buy-in is set to 20–100 big blinds and the rake cap to 3 big blinds.</p>
+          </div>
+          <div class="field">
+            <label for="max_seats">Seats</label>
+            <input type="number" id="max_seats" name="max_seats" value="6" min="2" max="9">
+            <p class="hint">Camera and mic use a peer-to-peer mesh, which is comfortable up to six.</p>
+          </div>
+          <div class="field">
+            <label for="rake_bps">Rake (basis points)</label>
+            <input type="number" id="rake_bps" name="rake_bps" value="250" min="0" max="1000">
+          </div>
+        </div>
+        <div class="field">
+          <label><input type="checkbox" name="video" value="1" checked style="width:auto"> Offer camera and microphone at this table</label>
+        </div>
+        <button type="submit">Open table</button>
+      </form>
+    </div>
+  </section>
+{{end}}

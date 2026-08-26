@@ -140,6 +140,11 @@ func isPlaySurface(path string) bool {
 		return true
 	case path == "/bets":
 		return true
+	case path == "/poker" || hasPrefix(path, "/poker/"):
+		// Poker is gambling, so a self-excluded customer must not reach a
+		// table. Reading a published hand history is not gambling, so hand
+		// pages and the verifier stay open.
+		return !hasPrefix(path, "/poker/hands/") && path != "/poker/verify"
 	case path == "/reality-check":
 		return true
 	default:

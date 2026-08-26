@@ -1,0 +1,207 @@
+{{define "content"}}
+  {{$ctx := .}}
+  {{$t := .Data.Table}}
+  <section class="panel" id="poker-root"
+           data-table="{{$t.TableID}}"
+           data-seat="{{$t.YourSeat}}"
+           data-csrf="{{.CSRF}}"
+           data-video="{{if $t.VideoEnabled}}1{{else}}0{{end}}">
+    <div class="panel-head">
+      <div>
+        <h1>{{$t.Name}}</h1>
+        <div class="muted small">
+          Hold'em · blinds {{btc $t.SmallBlindSat}} / {{btc $t.BigBlindSat}}
+          · rake {{pct $t.RakeBps}} capped at {{btc $t.RakeCapSat}}
+          {{if $t.NoFlopNoDrop}} · no flop, no drop{{end}}
+        </div>
+      </div>
+      <div class="chips">
+        <span class="tag" id="stage-tag">{{title $t.Stage}}</span>
+        <a class="chip" href="/poker">Lobby</a>
+      </div>
+    </div>
+
+    <div class="felt" id="felt">
+      <div class="board" id="board">
+        {{range $t.Board}}<span class="card">{{.}}</span>{{end}}
+      </div>
+      <div class="pot" id="pot">Pot {{btc $t.PotSat}} BTC</div>
+      <noscript>
+        <p class="muted small">
+          This table needs JavaScript to play: the live feed, the action
+          buttons and the table talk all rely on it. What you can see above is
+          a snapshot from when the page loaded.
+        </p>
+      </noscript>
+    </div>
+
+    {{/* Seats are rendered here as well as by the client, so the table is
+         readable before the live stream connects and for anybody without
+         JavaScript. The client replaces this wholesale on its first update. */}}
+    <div class="seats" id="seats">
+      {{range $t.Seats}}
+        <div class="seat{{if not .Occupied}} empty{{end}}{{if .IsTurn}} turn{{end}}{{if .IsYou}} you{{end}}{{if eq .Status "folded"}} folded{{end}}">
+          <div class="who">
+            <span class="name">{{if .Occupied}}{{.Name}}{{else}}Seat {{.Number}} — open{{end}}</span>
+            <span class="stack">{{if .Occupied}}{{btc .StackSat}}{{end}}</span>
+          </div>
+          <div class="cards">
+            {{if .Cards}}
+              {{range .Cards}}<span class="card small">{{.}}</span>{{end}}
+            {{else if .HasCards}}
+              <span class="card small back"></span><span class="card small back"></span>
+            {{end}}
+          </div>
+          <div class="badges">
+            {{if .IsButton}}<span class="tag">Button</span>{{end}}
+            {{if eq .Status "all_in"}}<span class="tag warn">All in</span>{{end}}
+            {{if eq .Status "folded"}}<span class="tag">Folded</span>{{end}}
+            {{if eq .Status "sitting_out"}}<span class="tag">Sitting out</span>{{end}}
+            {{if .TimedOut}}<span class="tag warn">Timed out</span>{{end}}
+            {{if .VideoConsent}}<span class="tag good">Live</span>{{end}}
+          </div>
+          {{if .CommittedSat}}<div class="committed">Bet {{btc .CommittedSat}} BTC</div>{{end}}
+        </div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="panel" id="action-panel" hidden>
+    <div class="panel-head">
+      <h2>Your action</h2>
+      <span class="tag warn" id="clock"></span>
+    </div>
+    <div class="panel-body">
+      <div class="action-row" id="action-buttons"></div>
+      <div class="field" id="raise-field" hidden>
+        <label for="raise-amount">Raise to (<span id="raise-display">—</span> BTC)</label>
+        <input type="range" id="raise-amount" min="0" max="0" step="1" style="width:100%">
+      </div>
+      <p class="hint" id="action-error"></p>
+    </div>
+  </section>
+
+  {{if lt $t.YourSeat 0}}
+  <section class="panel">
+    <div class="panel-head"><h2>Take a seat</h2></div>
+    <div class="panel-body">
+      {{if .User}}
+        <form method="post" action="/poker/tables/{{$t.TableID}}/sit" class="field-row" style="align-items:end">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <div class="field">
+            <label for="seat">Seat</label>
+            <select id="seat" name="seat">
+              {{range $t.Seats}}{{if not .Occupied}}<option value="{{.Number}}">Seat {{.Number}}</option>{{end}}{{end}}
+            </select>
+          </div>
+          <div class="field">
+            <label for="buy_in">Buy-in (BTC)</label>
+            <input type="text" id="buy_in" name="buy_in" value="{{btc $t.MinBuyInSat}}">
+            <p class="hint">Between {{btc $t.MinBuyInSat}} and {{btc $t.MaxBuyInSat}} BTC. Your balance is {{btc .BalanceSat}} BTC.</p>
+          </div>
+          <div class="field" style="flex:0 0 auto"><button type="submit">Sit down</button></div>
+        </form>
+      {{else}}
+        <p><a href="/login?next=/poker/tables/{{$t.TableID}}">Sign in</a> to take a seat. You can watch without one.</p>
+      {{end}}
+    </div>
+  </section>
+  {{else}}
+  <section class="panel">
+    <div class="panel-head"><h2>Your seat</h2></div>
+    <div class="panel-body stack">
+      <div class="field-row">
+        <form method="post" action="/poker/tables/{{$t.TableID}}/leave"
+              data-confirm="Stand up and return your chips to your balance?">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button class="secondary" type="submit">Stand up and cash out</button>
+        </form>
+      </div>
+
+      {{if $t.VideoEnabled}}
+      <div class="notice info">
+        <strong>Camera and microphone are off.</strong>
+        Turning them on shares live video and audio directly with the other
+        players at this table, peer to peer. Nothing is recorded and nothing
+        passes through our servers. It applies to this sitting only: standing
+        up turns it off, and it is never remembered.
+        <div class="field-row" style="margin-top:10px; align-items:center">
+          <button class="secondary" type="button" id="video-toggle">Turn on camera &amp; mic</button>
+          <button class="secondary" type="button" id="mute-toggle" hidden>Mute</button>
+          <button class="secondary" type="button" id="camera-toggle" hidden>Hide camera</button>
+          <span class="muted small" id="video-status"></span>
+        </div>
+      </div>
+      {{end}}
+
+      <details>
+        <summary class="muted small">Your seed for the shuffle</summary>
+        <div class="stack" style="margin-top:10px">
+          <p class="muted small">
+            Your seed is mixed with every other player's and with ours to
+            produce the deck. Set your own if you would rather not rely on the
+            one we generated. It takes effect from the next hand: changing it
+            mid-hand would mean altering a deck already committed to.
+          </p>
+          <form method="post" action="/poker/tables/{{$t.TableID}}/seed" class="field-row" style="align-items:end">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <div class="field">
+              <label for="seed">Your seed</label>
+              <input type="text" id="seed" name="seed" value="{{$t.YourSeed}}">
+            </div>
+            <div class="field" style="flex:0 0 auto"><button class="secondary" type="submit">Save</button></div>
+          </form>
+        </div>
+      </details>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>This hand</h2>
+      <span class="muted small">Hand {{$t.HandNumber}}</span>
+    </div>
+    <div class="panel-body stack">
+      {{if $t.Commitment}}
+        <div class="field">
+          <label>Deck commitment, published before the deal</label>
+          <div class="address" id="commitment">{{$t.Commitment}}</div>
+          <p class="hint">
+            Note this down. When the hand ends we publish the seed, and
+            <a href="/poker/verify">this page</a> will show you it produces
+            exactly the deck you were dealt from.
+          </p>
+        </div>
+      {{else}}
+        <p class="muted">Waiting for the next hand.</p>
+      {{end}}
+      <div class="log" id="hand-log">{{range $t.Log}}{{.}}
+{{end}}</div>
+    </div>
+  </section>
+
+  {{if .Data.Hands}}
+  <section class="panel">
+    <div class="panel-head"><h2>Recent hands</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th class="num">Hand</th><th>Board</th><th class="num">Pot</th><th class="num">Rake</th><th></th></tr></thead>
+        <tbody>
+          {{range .Data.Hands}}
+            <tr>
+              <td class="num">{{.HandNumber}}</td>
+              <td class="small">{{if .Board}}{{.Board}}{{else}}—{{end}}</td>
+              <td class="num">{{btc .PotSat}}</td>
+              <td class="num">{{btc .RakeSat}}</td>
+              <td>{{if .Verifiable}}<a href="/poker/hands/{{.ID}}">Verify</a>{{else}}<span class="muted small">running</span>{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  <script src="/static/poker.js"></script>
+{{end}}

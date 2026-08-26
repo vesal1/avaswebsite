@@ -75,6 +75,8 @@ const (
 	AccountDepositSuspense    = "deposit_suspense"
 	AccountWithdrawalSuspense = "withdrawal_suspense"
 	AccountExternalBitcoin    = "external_bitcoin"
+	AccountPokerTable         = "poker_table"
+	AccountHouseRake          = "house_rake"
 )
 
 // Ledger transaction kinds.
@@ -88,6 +90,11 @@ const (
 	TxnAdjustment         = "adjustment"
 	TxnFee                = "fee"
 	TxnBonus              = "bonus"
+	TxnPokerBuyIn         = "poker_buy_in"
+	TxnPokerCashOut       = "poker_cash_out"
+	TxnPokerRake          = "poker_rake"
+	TxnCasinoStake        = "casino_stake"
+	TxnCasinoPayout       = "casino_payout"
 )
 
 // Deposit status values.

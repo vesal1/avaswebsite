@@ -1,0 +1,94 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Poker</h1>
+      <div class="chips">
+        <a class="chip" href="/poker/verify">Verify a hand</a>
+        {{if .User}}<a class="chip" href="/poker/my-hands">My hands</a>{{end}}
+      </div>
+    </div>
+    <div class="panel-body stack">
+      <p class="muted">
+        Texas Hold'em cash tables. The deck for every hand is committed before
+        the deal and published afterwards, so you can check for yourself that
+        the cards were fixed before anybody saw them. Rake is capped and never
+        taken from a hand that ends before the flop.
+      </p>
+    </div>
+  </section>
+
+  {{if .Data.SeatedAt}}
+    <div class="notice good">
+      You are seated at a table.
+      <a href="/poker/tables/{{.Data.SeatedAt}}">Return to it</a>.
+    </div>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Cash tables</h2></div>
+    {{if .Data.Tables}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Table</th><th class="num">Blinds</th><th class="num">Buy-in</th>
+                <th>Rake</th><th class="num">Players</th><th>Table talk</th><th></th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Tables}}
+              <tr>
+                <td><strong>{{.Name}}</strong><div class="muted small">Hold'em · {{.HandsPlayed}} hands dealt</div></td>
+                <td class="num">{{btc .SmallBlindSat}} / {{btc .BigBlindSat}}</td>
+                <td class="num">{{btc .MinBuyInSat}} – {{btc .MaxBuyInSat}}</td>
+                <td class="small">
+                  {{pct .RakeBps}}, capped at {{btc .RakeCapSat}}
+                  {{if .NoFlopNoDrop}}<div class="muted">No flop, no drop</div>{{end}}
+                </td>
+                <td class="num">{{.Seated}} / {{.MaxSeats}}</td>
+                <td>{{if .VideoEnabled}}<span class="tag">Camera &amp; mic</span>{{else}}<span class="muted small">Off</span>{{end}}</td>
+                <td><a class="button secondary" href="/poker/tables/{{.TableID}}">Open</a></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <p class="empty">
+        No tables are running.
+        {{if and .User .User.CanTrade}}<a href="/admin/poker">Create one</a>.{{end}}
+      </p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>How we keep it honest</h2></div>
+    <div class="panel-body stack">
+      <h3>The deck is decided before the deal, and you can prove it</h3>
+      <p class="muted">
+        Before any card is dealt we draw a secret seed and publish only its
+        SHA-256 hash. You and everybody at the table contribute your own seeds,
+        and the shuffle is derived from all of them together. When the hand
+        ends we publish the secret seed. You can check it hashes to what we
+        showed you beforehand, and replay the shuffle to get the exact same
+        deck. We cannot look at the deck and change it, deal a card other than
+        the one the seed dictates, or pick a seed after seeing your cards —
+        all three would break a promise that was already public.
+      </p>
+      <a class="button secondary" href="/poker/verify">Check a hand yourself</a>
+
+      <h3>We are paid by the rake, and only the rake</h3>
+      <p class="muted">
+        The rake is a fixed percentage, it is capped, and it is shown on every
+        table above before you sit down. A hand that ends before the flop is
+        never raked, so there is nothing to gain from hurrying hands along.
+        Nothing in the software can influence which cards come out.
+      </p>
+
+      <h3>Cards stay private</h3>
+      <p class="muted">
+        Your hole cards are sent to you and to nobody else. A folded hand is
+        never revealed, during the hand or in the history afterwards.
+      </p>
+    </div>
+  </section>
+{{end}}

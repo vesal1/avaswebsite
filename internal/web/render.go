@@ -142,6 +142,7 @@ func templateFuncs() template.FuncMap {
 		"sportName": sportName,
 		"marketDoc": marketDoc,
 		"add":       func(a, b int) int { return a + b },
+		"sub":       func(a, b int64) int64 { return a - b },
 		"pct":       func(bps int64) string { return fmt.Sprintf("%d.%02d%%", bps/100, bps%100) },
 		"hasValue":  func(v any) bool { return v != nil },
 		"dict":      dict,

@@ -16,6 +16,7 @@ import (
 	"github.com/vesal1/avaswebsite/internal/bonus"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
+	"github.com/vesal1/avaswebsite/internal/pokerhouse"
 	"github.com/vesal1/avaswebsite/internal/store"
 	"github.com/vesal1/avaswebsite/internal/treasury"
 	"github.com/vesal1/avaswebsite/internal/wallet"
@@ -47,11 +48,13 @@ func newTestServer(t *testing.T) *testServer {
 	promotions := bonus.New(db, cfg)
 	server, err := New(Options{
 		Config: cfg, Store: db, Compliance: comp,
-		Wallet:   wallet.New(db, provider, comp, cfg),
-		Betting:  betting.New(db, comp, cfg).WithWagering(promotions),
-		Bonus:    promotions,
-		Treasury: treasury.New(db, cfg),
-		Logger:   logger,
+		Wallet:     wallet.New(db, provider, comp, cfg),
+		Betting:    betting.New(db, comp, cfg).WithWagering(promotions),
+		Bonus:      promotions,
+		Treasury:   treasury.New(db, cfg),
+		Poker:      pokerhouse.New(db, cfg, comp, promotions),
+		Signalling: pokerhouse.NewSignalling(),
+		Logger:     logger,
 	})
 	if err != nil {
 		t.Fatalf("build server: %v", err)
@@ -95,6 +98,7 @@ func TestPublicPagesRender(t *testing.T) {
 	for _, path := range []string{
 		"/", "/sports", "/sports/football", "/sports?q=snooker",
 		"/rules", "/responsible-gambling", "/promotions", "/healthz",
+		"/poker", "/poker/verify",
 		"/login", "/register",
 		"/api/sports", "/api/sports/football/events",
 	} {
@@ -257,7 +261,8 @@ func TestBackOfficeIsHiddenFromCustomers(t *testing.T) {
 	}, map[string]string{"CF-IPCountry": "GB"})
 	cookie := rec.Header().Get("Set-Cookie")
 
-	for _, path := range []string{"/admin", "/admin/events", "/admin/withdrawals", "/admin/flags"} {
+	for _, path := range []string{"/admin", "/admin/events", "/admin/withdrawals",
+		"/admin/flags", "/admin/players", "/admin/adjustments", "/admin/offers"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("Cookie", cookie)
 		out := httptest.NewRecorder()
@@ -267,6 +272,21 @@ func TestBackOfficeIsHiddenFromCustomers(t *testing.T) {
 		if out.Code != http.StatusNotFound {
 			t.Errorf("customer GET %s = %d, want 404", path, out.Code)
 		}
+	}
+}
+
+func TestMiddlewareDoesNotBreakStreaming(t *testing.T) {
+	// The access-log wrapper sits in front of every handler. If it hides
+	// http.Flusher, the poker stream returns 500 and the table never updates.
+	ts := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/poker/tables/1/stream", nil)
+	rec := httptest.NewRecorder()
+	ts.ServeHTTP(rec, req)
+
+	// No table 1 exists in the test database, so a 404 is the right answer.
+	// A 500 would mean flushing was unavailable.
+	if rec.Code == http.StatusInternalServerError {
+		t.Fatalf("the stream reported %d: middleware has hidden http.Flusher", rec.Code)
 	}
 }
 

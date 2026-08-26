@@ -30,6 +30,7 @@ import (
 	"github.com/vesal1/avaswebsite/internal/bonus"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
+	"github.com/vesal1/avaswebsite/internal/pokerhouse"
 	"github.com/vesal1/avaswebsite/internal/seed"
 	"github.com/vesal1/avaswebsite/internal/store"
 	"github.com/vesal1/avaswebsite/internal/treasury"
@@ -102,6 +103,8 @@ type application struct {
 	betting    *betting.Service
 	bonus      *bonus.Service
 	treasury   *treasury.Service
+	poker      *pokerhouse.House
+	signals    *pokerhouse.Signalling
 	log        *slog.Logger
 }
 
@@ -165,6 +168,8 @@ func build() (*application, error) {
 		betting:  book,
 		bonus:    promotions,
 		treasury: treasury.New(db, cfg),
+		poker:    pokerhouse.New(db, cfg, comp, promotions),
+		signals:  pokerhouse.NewSignalling(),
 		log:      logger,
 	}, nil
 }
@@ -279,7 +284,8 @@ func serve(args []string) error {
 	server, err := web.New(web.Options{
 		Config: app.cfg, Store: app.store, Betting: app.betting,
 		Wallet: app.wallet, Compliance: app.compliance,
-		Bonus: app.bonus, Treasury: app.treasury, Logger: app.log,
+		Bonus: app.bonus, Treasury: app.treasury,
+		Poker: app.poker, Signalling: app.signals, Logger: app.log,
 	})
 	if err != nil {
 		return err
@@ -300,6 +306,12 @@ func serve(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Bring the poker tables up and start dealing.
+	if err := app.poker.Load(ctx); err != nil {
+		return err
+	}
+	go app.poker.Run(ctx)
 
 	// Background upkeep: reconcile deposits, expire sessions and check the
 	// ledger on a timer, so a break is noticed without waiting for a request.
@@ -397,6 +409,9 @@ func runSeed(args []string) error {
 	}
 	fmt.Printf("seeded %d events across %d sports with %d markets and %d prices\n",
 		summary.Events, summary.Sports, summary.Markets, summary.Selections)
+	if summary.PokerTables > 0 {
+		fmt.Printf("created %d poker tables\n", summary.PokerTables)
+	}
 	return nil
 }
 

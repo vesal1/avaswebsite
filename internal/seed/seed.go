@@ -17,10 +17,63 @@ import (
 
 // Summary reports what was created.
 type Summary struct {
-	Sports     int
-	Events     int
-	Markets    int
-	Selections int
+	Sports      int
+	Events      int
+	Markets     int
+	Selections  int
+	PokerTables int
+}
+
+// PokerTables creates a spread of cash tables if none exist.
+//
+// The stakes ladder in even steps so the lobby is legible, and every table
+// publishes the same rake terms: a capped percentage with no rake before the
+// flop.
+func PokerTables(ctx context.Context, s *store.Store, cfg *config.Config) (int, error) {
+	existing, err := s.ListPokerTables(ctx, false)
+	if err != nil {
+		return 0, err
+	}
+	if len(existing) > 0 {
+		return 0, nil
+	}
+
+	stakes := []struct {
+		name        string
+		bigBlindSat int64
+		seats       int
+		video       bool
+	}{
+		{"Micro 1", 200, 6, true},
+		{"Micro 2", 200, 6, false},
+		{"Low", 1_000, 6, true},
+		{"Mid", 5_000, 6, true},
+		{"High", 25_000, 6, true},
+		{"Heads Up", 1_000, 2, true},
+	}
+
+	var created int
+	for _, spec := range stakes {
+		if _, err := s.CreatePokerTable(ctx, store.PokerTable{
+			Name:          spec.name,
+			SmallBlindSat: spec.bigBlindSat / 2,
+			BigBlindSat:   spec.bigBlindSat,
+			// The usual cash-game spread: twenty to a hundred big blinds.
+			MinBuyInSat:   spec.bigBlindSat * 20,
+			MaxBuyInSat:   spec.bigBlindSat * 100,
+			MaxSeats:      spec.seats,
+			RakeBps:       250,
+			RakeCapSat:    spec.bigBlindSat * 3,
+			NoFlopNoDrop:  true,
+			ActionSeconds: 30,
+			VideoEnabled:  spec.video,
+			Active:        true,
+		}); err != nil {
+			return created, err
+		}
+		created++
+	}
+	return created, nil
 }
 
 // Load creates roughly `target` events spread across the catalog, with a
@@ -30,6 +83,12 @@ func Load(ctx context.Context, s *store.Store, cfg *config.Config, target int) (
 	if target <= 0 {
 		target = 60
 	}
+
+	tables, err := PokerTables(ctx, s, cfg)
+	if err != nil {
+		return summary, err
+	}
+	summary.PokerTables = tables
 
 	sports := catalog.All()
 	now := s.Now().Truncate(time.Hour)

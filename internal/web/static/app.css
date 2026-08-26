@@ -378,3 +378,88 @@ footer .age {
   .event-row { grid-template-columns: 1fr; }
   .price-row { justify-content: flex-start; }
 }
+
+/* ------------------------------------------------------------ poker table */
+.felt {
+  background: radial-gradient(ellipse at center, #14532d 0%, #0f3d22 70%, #0b2d19 100%);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 32px 16px;
+  text-align: center;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+.board { display: flex; gap: 8px; justify-content: center; min-height: 62px; flex-wrap: wrap; }
+.card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 62px;
+  background: #f6f7f9;
+  color: #10141a;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+.card.red { color: #c02128; }
+.card.back {
+  background: repeating-linear-gradient(45deg, #33507a, #33507a 5px, #274063 5px, #274063 10px);
+  color: transparent;
+}
+.card.small { min-width: 30px; height: 42px; font-size: 13px; }
+.pot { font-weight: 700; font-size: 16px; color: var(--price); font-variant-numeric: tabular-nums; }
+
+.seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+.seat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s;
+}
+.seat.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.seat.you { background: var(--bg-hover); }
+.seat.folded { opacity: 0.5; }
+.seat.empty { border-style: dashed; opacity: 0.6; }
+.seat .who { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.seat .who .name { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat .who .stack { color: var(--price); font-variant-numeric: tabular-nums; font-size: 13px; }
+.seat .cards { display: flex; gap: 4px; min-height: 42px; align-items: center; }
+.seat .committed { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.seat video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 6px;
+  object-fit: cover;
+  transform: scaleX(-1); /* mirror, as people expect of their own camera */
+}
+.seat .badges { display: flex; gap: 5px; flex-wrap: wrap; }
+
+.action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.log {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}

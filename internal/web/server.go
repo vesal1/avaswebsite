@@ -19,6 +19,7 @@ import (
 	"github.com/vesal1/avaswebsite/internal/bonus"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
+	"github.com/vesal1/avaswebsite/internal/pokerhouse"
 	"github.com/vesal1/avaswebsite/internal/store"
 	"github.com/vesal1/avaswebsite/internal/treasury"
 	"github.com/vesal1/avaswebsite/internal/wallet"
@@ -63,6 +64,8 @@ type Server struct {
 	compliance *compliance.Service
 	bonus      *bonus.Service
 	treasury   *treasury.Service
+	poker      *pokerhouse.House
+	signals    *pokerhouse.Signalling
 	log        *slog.Logger
 	// templates holds one parsed set per page. Each page defines a template
 	// named "content" that the shared layout calls, so the sets have to be
@@ -81,6 +84,8 @@ type Options struct {
 	Compliance *compliance.Service
 	Bonus      *bonus.Service
 	Treasury   *treasury.Service
+	Poker      *pokerhouse.House
+	Signalling *pokerhouse.Signalling
 	Logger     *slog.Logger
 }
 
@@ -98,6 +103,8 @@ func New(opts Options) (*Server, error) {
 		"Compliance": opts.Compliance != nil,
 		"Bonus":      opts.Bonus != nil,
 		"Treasury":   opts.Treasury != nil,
+		"Poker":      opts.Poker != nil,
+		"Signalling": opts.Signalling != nil,
 		"Logger":     opts.Logger != nil,
 	} {
 		if !present {
@@ -112,7 +119,8 @@ func New(opts Options) (*Server, error) {
 	s := &Server{
 		cfg: opts.Config, store: opts.Store, betting: opts.Betting,
 		wallet: opts.Wallet, compliance: opts.Compliance,
-		bonus: opts.Bonus, treasury: opts.Treasury, log: opts.Logger,
+		bonus: opts.Bonus, treasury: opts.Treasury,
+		poker: opts.Poker, signals: opts.Signalling, log: opts.Logger,
 		templates: templates, mux: http.NewServeMux(),
 		now: func() time.Time { return opts.Store.Now() },
 	}
@@ -186,9 +194,27 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/withdrawals/{id}/reject", s.requireCompliance(s.handleRejectWithdrawal))
 	s.mux.HandleFunc("GET /admin/flags", s.requireCompliance(s.handleAdminFlags))
 	s.mux.HandleFunc("POST /admin/flags/{id}/resolve", s.requireCompliance(s.handleResolveFlag))
+	// Poker.
+	s.mux.HandleFunc("GET /poker", s.handlePokerLobby)
+	s.mux.HandleFunc("GET /poker/verify", s.handlePokerVerifyForm)
+	s.mux.HandleFunc("POST /poker/verify", s.handlePokerVerify)
+	s.mux.HandleFunc("GET /poker/hands/{id}", s.handlePokerHand)
+	s.mux.HandleFunc("GET /poker/my-hands", s.requireCustomer(s.handlePokerMyHands))
+	s.mux.HandleFunc("GET /poker/tables/{id}", s.handlePokerTable)
+	s.mux.HandleFunc("GET /poker/tables/{id}/stream", s.handlePokerStream)
+	s.mux.HandleFunc("POST /poker/tables/{id}/sit", s.requireCustomer(s.handlePokerSit))
+	s.mux.HandleFunc("POST /poker/tables/{id}/leave", s.requireCustomer(s.handlePokerLeave))
+	s.mux.HandleFunc("POST /poker/tables/{id}/act", s.requireCustomer(s.handlePokerAct))
+	s.mux.HandleFunc("POST /poker/tables/{id}/seed", s.requireCustomer(s.handlePokerSeed))
+	s.mux.HandleFunc("POST /poker/tables/{id}/video", s.requireCustomer(s.handlePokerVideoConsent))
+	s.mux.HandleFunc("POST /poker/tables/{id}/signal", s.requireCustomer(s.handlePokerSignal))
+
 	s.mux.HandleFunc("GET /promotions", s.handlePromotions)
 	s.mux.HandleFunc("POST /account/forfeit-bonus", s.requireCustomer(s.handleForfeitBonus))
 
+	s.mux.HandleFunc("GET /admin/poker", s.requireTrader(s.handleAdminPoker))
+	s.mux.HandleFunc("POST /admin/poker", s.requireTrader(s.handleAdminCreatePokerTable))
+	s.mux.HandleFunc("POST /admin/poker/{id}/toggle", s.requireTrader(s.handleAdminTogglePokerTable))
 	s.mux.HandleFunc("GET /admin/players", s.requireStaff(s.handleAdminPlayers))
 	s.mux.HandleFunc("GET /admin/players/{id}", s.requireStaff(s.handleAdminPlayer))
 	s.mux.HandleFunc("POST /admin/players/{id}/bonus", s.requireCompliance(s.handleAdminGrantBonus))
@@ -237,6 +263,7 @@ func (s *Server) withLogging(next http.Handler) http.Handler {
 	})
 }
 
+// statusRecorder notes the response status for the access log.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -245,6 +272,19 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
+}
+
+// Unwrap exposes the wrapped writer so http.ResponseController can reach the
+// capabilities this wrapper does not itself implement. Without it, wrapping
+// the writer silently strips flushing, which breaks every streaming response
+// on the site.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+// Flush passes a flush through, so a wrapped writer still streams.
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {

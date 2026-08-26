@@ -1,0 +1,83 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>My spins</h1>
+      <div class="chips">
+        <a class="chip" href="/casino">Casino</a>
+        <a class="chip" href="/casino/fairness">How the games are decided</a>
+      </div>
+    </div>
+    {{with .Data.Totals}}
+      <div class="panel-body">
+        <dl class="facts">
+          <div><dt>Spins</dt><dd>{{.Spins}}</dd></div>
+          <div><dt>Staked</dt><dd>{{btc .StakeSat}} BTC</dd></div>
+          <div><dt>Returned</dt><dd>{{btc .WinSat}} BTC</dd></div>
+          <div><dt>Net</dt>
+            <dd class="{{if lt .NetSat 0}}bad{{else}}good{{end}}">{{btc .NetSat}} BTC</dd></div>
+          <div><dt>Your return</dt><dd>{{pct .ReturnBps}}</dd></div>
+        </dl>
+      </div>
+    {{end}}
+  </section>
+
+  {{with .Data.Seed}}
+    <section class="panel">
+      <div class="panel-head"><h2>Your current seed pair</h2></div>
+      <div class="panel-body stack">
+        <dl class="facts">
+          <div><dt>Commitment</dt><dd class="mono small">{{.Commitment}}</dd></div>
+          <div><dt>Your seed</dt><dd class="mono small">{{.ClientSeed}}</dd></div>
+          <div><dt>Spins taken</dt><dd>{{sub .NextNonce 1}}</dd></div>
+        </dl>
+        <p class="muted small">
+          The secret behind this pair stays sealed while you are playing on it.
+          Publish it whenever you like: every spin you have taken under it
+          becomes checkable, and a fresh pair is committed to in the same
+          moment so you are never left without one.
+        </p>
+        <form method="post" action="/casino/rotate" class="inline-form">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="back" value="/casino/history">
+          <label>New seed (optional)
+            <input type="text" name="client_seed" maxlength="64" placeholder="left blank, we draw one">
+          </label>
+          <button class="secondary" type="submit">Publish this seed and start a new one</button>
+        </form>
+      </div>
+    </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Every spin</h2></div>
+    {{if .Data.Spins}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>When</th><th>Game</th><th class="num">#</th><th class="num">Stake</th>
+                <th class="num">Returned</th><th>Free spins</th><th>Checkable</th><th></th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Spins}}
+              <tr>
+                <td class="small">{{datetime .CreatedAt}}</td>
+                <td>{{.GameKey}}</td>
+                <td class="num">{{.Nonce}}</td>
+                <td class="num">{{btc .StakeSat}}</td>
+                <td class="num {{if gt .WinSat 0}}good{{end}}">{{btc .WinSat}}</td>
+                <td class="num">{{if .FreeSpins}}{{.FreeSpins}}{{else}}—{{end}}</td>
+                <td>
+                  {{if .Verifiable}}<span class="tag good">Seed published</span>
+                  {{else}}<span class="tag warn">Seed still sealed</span>{{end}}
+                </td>
+                <td><a class="small" href="/casino/spins/{{.ID}}">Open</a></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <p class="empty">You have not spun anything yet. <a href="/casino">Have a look at the games</a>.</p>
+    {{end}}
+  </section>
+{{end}}

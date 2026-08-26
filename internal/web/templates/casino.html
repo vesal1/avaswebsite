@@ -1,0 +1,68 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Casino</h1>
+      <div class="chips">
+        <a class="chip" href="/casino/fairness">How the games are decided</a>
+        {{if .User}}<a class="chip" href="/casino/history">My spins</a>{{end}}
+      </div>
+    </div>
+    <div class="panel-body stack">
+      <p class="muted">
+        Every machine below shows its return to player. That figure is not a
+        target or an average taken from play: it is computed from the reel
+        strips and the paytable, counting every outcome the machine can produce
+        and how often it produces it. The reels themselves are fixed by a seed
+        we commit to before you spin and publish afterwards, so you can replay
+        any spin and check it landed where it was always going to land.
+      </p>
+    </div>
+  </section>
+
+  {{if .Data.Totals}}
+    {{with .Data.Totals}}
+      <section class="panel">
+        <div class="panel-head"><h2>Your play so far</h2></div>
+        <div class="panel-body">
+          <dl class="facts">
+            <div><dt>Spins</dt><dd>{{.Spins}}</dd></div>
+            <div><dt>Staked</dt><dd>{{btc .StakeSat}} BTC</dd></div>
+            <div><dt>Returned</dt><dd>{{btc .WinSat}} BTC</dd></div>
+            <div><dt>Net</dt>
+              <dd class="{{if lt .NetSat 0}}bad{{else}}good{{end}}">{{btc .NetSat}} BTC</dd></div>
+            <div><dt>Your return</dt><dd>{{pct .ReturnBps}}</dd></div>
+          </dl>
+          <p class="muted small">
+            Your own return will wander a long way from any machine's published
+            figure over a human number of spins. That is what the figure means:
+            it describes the machine over millions of spins, not your session.
+          </p>
+        </div>
+      </section>
+    {{end}}
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Slots</h2></div>
+    <div class="panel-body">
+      <div class="game-grid">
+        {{range .Data.Games}}
+          <a class="game-card" href="/casino/{{.Game.Key}}">
+            <div class="game-card-reels">
+              {{range $index, $symbol := .Game.Symbols}}{{if lt $index 5}}<span>{{$symbol.Glyph}}</span>{{end}}{{end}}
+            </div>
+            <h3>{{.Game.Name}}</h3>
+            <p class="muted small">{{.Game.Blurb}}</p>
+            <dl class="facts tight">
+              <div><dt>Return</dt><dd><strong>{{.Maths.Percent}}</strong></dd></div>
+              <div><dt>Volatility</dt><dd>{{.Game.Volatility}}</dd></div>
+              <div><dt>Layout</dt>
+                <dd>{{.Game.ReelCount}}&times;{{.Game.Rows}}{{if .Game.Ways}}, 1024 ways{{else}}, {{len .Game.Lines}} lines{{end}}</dd></div>
+              <div><dt>Stakes</dt><dd>{{btc .Game.MinStakeSat}} – {{btc .Game.MaxStakeSat}} BTC</dd></div>
+            </dl>
+          </a>
+        {{end}}
+      </div>
+    </div>
+  </section>
+{{end}}

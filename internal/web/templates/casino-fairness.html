@@ -1,0 +1,104 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>How the casino games are decided</h1></div>
+    <div class="panel-body stack">
+      <p>
+        A slot machine you cannot check is a machine you have to take on trust.
+        These do not ask you to. Every spin is decided by a seed we commit to
+        before you play and publish afterwards, and the algorithm that turns
+        that seed into reels is written out below so you can implement it
+        yourself and get the same answer.
+      </p>
+
+      <h2>The commitment</h2>
+      <ol>
+        <li>
+          When you first open a game we draw a random 32-byte server seed, and
+          show you only its SHA-256 hash. That hash is the commitment.
+        </li>
+        <li>
+          You contribute a client seed. Change it whenever you like — it is
+          mixed into every spin from that point on.
+        </li>
+        <li>
+          Each spin uses the pair plus a counter, the nonce, which starts at 1
+          and never repeats. Spin 47 is always the 47th nonce.
+        </li>
+        <li>
+          When you rotate the pair we publish the server seed. You can then
+          hash it, check it against the commitment you were shown before any of
+          those spins happened, and replay every one of them.
+        </li>
+      </ol>
+      <p class="muted">
+        The order is what does the work. We cannot look at a spin and change
+        it, cannot pick a seed once we know what you staked, and cannot deal a
+        different result than the seed dictates — any of those would break a
+        commitment that was already in your hands.
+      </p>
+
+      <h2>The algorithm</h2>
+      <p>
+        The keystream is HMAC-SHA256, keyed with the server seed, over the
+        message <code>clientSeed|nonce|</code> followed by an eight-byte
+        big-endian counter starting at zero. Bytes are taken from each 32-byte
+        block in order, and a new block is generated with the next counter when
+        one runs out.
+      </p>
+      <p>
+        Each reel's stop is drawn from that stream with rejection sampling: take
+        as many bytes as the strip length needs, discard any value in the
+        ragged tail above the largest whole multiple of the strip length, and
+        take the remainder. It is deliberately not a modulo of a single byte,
+        which would make the first stops on a 55-stop reel slightly likelier
+        than the rest — a small bias, and one that would fall our way.
+      </p>
+      <p>
+        Reels are drawn left to right. If the spin wins free spins, each free
+        spin draws its reels from the same stream in turn, so the whole round —
+        base spin, feature and all — comes out of one seed.
+      </p>
+      <p class="muted">
+        This is the same generator that shuffles the poker decks. One
+        implementation, audited once.
+      </p>
+
+      <h2>The return figures</h2>
+      <p>
+        Each machine publishes its return to player. That number is computed,
+        not observed: it is the sum over every outcome the reel strips can
+        produce, weighted by how often they produce it, run through the same
+        code that pays you. Stakes are restricted to levels that divide exactly
+        into the paytable, so no win is ever quietly rounded down and the
+        published figure is the real one rather than a ceiling.
+      </p>
+      <table>
+        <thead><tr><th>Game</th><th>Layout</th><th class="num">Return</th><th>Volatility</th></tr></thead>
+        <tbody>
+          {{range .Data.Games}}
+            {{$maths := mathsFor .Key}}
+            <tr>
+              <td><a href="/casino/{{.Key}}">{{.Name}}</a></td>
+              <td class="small">
+                {{.ReelCount}}&times;{{.Rows}}{{if .Ways}}, 1024 ways{{else}}, {{len .Lines}} lines{{end}}
+              </td>
+              <td class="num"><strong>{{$maths.Percent}}</strong></td>
+              <td class="small">{{.Volatility}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+
+      <h2>What we do not do</h2>
+      <p>
+        There is no mechanism in this software that varies a machine's odds by
+        who is playing, what they have won, how long they have been at it or
+        what they are holding. The engine that decides a spin is handed a game,
+        a seed and a stake, and is given nothing else — it could not consult
+        your balance if it were asked to. The same applies at the poker tables:
+        the deck is random, and the house takes a capped rake on hands that
+        reach a flop rather than manufacturing hands to rake.
+      </p>
+    </div>
+  </section>
+{{end}}

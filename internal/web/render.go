@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"math"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/vesal1/avaswebsite/internal/catalog"
 	"github.com/vesal1/avaswebsite/internal/money"
+	"github.com/vesal1/avaswebsite/internal/slots"
 	"github.com/vesal1/avaswebsite/internal/store"
 )
 
@@ -143,10 +145,33 @@ func templateFuncs() template.FuncMap {
 		"marketDoc": marketDoc,
 		"add":       func(a, b int) int { return a + b },
 		"sub":       func(a, b int64) int64 { return a - b },
-		"pct":       func(bps int64) string { return fmt.Sprintf("%d.%02d%%", bps/100, bps%100) },
-		"hasValue":  func(v any) bool { return v != nil },
-		"dict":      dict,
-		"list":      func(items ...string) []string { return items },
+		"div": func(a, b int64) int64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
+		"pct":      formatPercent,
+		"hasValue": func(v any) bool { return v != nil },
+		"dict":     dict,
+		"seq":      seq,
+		"mul":      func(a, b float64) float64 { return a * b },
+		// oneIn turns a probability into the "one spin in N" phrasing a
+		// paytable uses. A probability of zero would divide by zero, so it
+		// comes back as a number large enough to read as "never".
+		"oneIn": func(p float64) float64 {
+			if p <= 0 {
+				return math.Inf(1)
+			}
+			return 1 / p
+		},
+		"payX100":     formatMultiplier,
+		"symbolGlyph": symbolGlyph,
+		"mathsFor": func(key string) slots.Maths {
+			maths, _ := slots.MathsFor(key)
+			return maths
+		},
+		"list": func(items ...string) []string { return items },
 		"impliedBps": func(milli int64) int64 {
 			bps, err := money.ImpliedProbabilityBps(milli)
 			if err != nil {
@@ -281,4 +306,45 @@ type contextLike = interface {
 	Done() <-chan struct{}
 	Err() error
 	Value(any) any
+}
+
+// seq counts 0..n-1, so a template can lay out a grid of reels and rows
+// without the handler having to build a slice for it.
+func seq(n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = i
+	}
+	return out
+}
+
+// formatMultiplier renders a paytable value, which is stored in hundredths of
+// the stake. Whole multiples read as "12x" rather than "12.00x".
+func formatMultiplier(x100 int64) string {
+	if x100%100 == 0 {
+		return fmt.Sprintf("%dx", x100/100)
+	}
+	if x100%10 == 0 {
+		return fmt.Sprintf("%d.%dx", x100/100, (x100%100)/10)
+	}
+	return fmt.Sprintf("%d.%02dx", x100/100, x100%100)
+}
+
+// symbolGlyph looks up what to draw for a cell of a spin window.
+func symbolGlyph(game *slots.Game, id slots.SymbolID) string {
+	if game == nil || int(id) < 0 || int(id) >= len(game.Symbols) {
+		return ""
+	}
+	return game.Symbols[id].Glyph
+}
+
+// formatPercent renders basis points. Negatives are handled explicitly: the
+// obvious "%d.%02d" of a negative value prints the sign twice and the
+// fractional part backwards, which turned a -19.70% gap into "-19.-70%".
+func formatPercent(bps int64) string {
+	sign := ""
+	if bps < 0 {
+		sign, bps = "-", -bps
+	}
+	return fmt.Sprintf("%s%d.%02d%%", sign, bps/100, bps%100)
 }

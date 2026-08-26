@@ -116,6 +116,11 @@ internal/money        satoshi and odds arithmetic — integers only
 internal/bonus        promotions, wagering requirements, comps
 internal/treasury     manual cash adjustments with two-person approval
 internal/catalog      the 168 sports and every market kind
+internal/fair         the commit-reveal generator behind every game
+internal/poker        Texas Hold'em: cards, evaluator, betting, pots
+internal/pokerhouse   live tables, seats, chips, camera and mic signalling
+internal/slots        the slot engine and the machines, with exact RTP maths
+internal/casino       the slot floor: stakes, settlement, seed rotation
 internal/store        SQLite schema and all SQL
 internal/auth         Argon2id credentials, sessions, CSRF
 internal/bitcoin      wallet providers: mock, BTCPay Server, Bitcoin Core
@@ -225,6 +230,92 @@ settlement rules.
 The catalog's tests enforce the invariants that matter: a sport that can draw
 must offer a draw-no-bet alternative, a sport that runs races must be able to
 price an outright, and every sport must carry a headline winner market.
+
+---
+
+## Poker
+
+Texas Hold'em cash tables, dealt live over server-sent events, with actions
+posted as ordinary forms so they stay inside the same CSRF protection as the
+rest of the site.
+
+The deck for every hand is committed to before the deal and published
+afterwards, so the cards were fixed before anybody saw them. Seats are
+persisted, so a restart returns players to their chairs with their stacks
+intact rather than stranding real money at a table that no longer exists.
+
+Players at a table can see and hear each other. That runs peer to peer over
+WebRTC with the server only passing the offers along; the media never touches
+this software, nothing is recorded, and consent is per sitting rather than a
+standing permission — sitting down does not turn a camera on.
+
+**On the rake.** The house takes a capped percentage of pots that reach a flop.
+It has no reason to want more hands than the players want, and no mechanism to
+manufacture them: the deck comes from the seed, the button moves by the rules,
+and there is no code path in which the table's behaviour depends on how much
+rake it has taken.
+
+---
+
+## The casino
+
+Four slot machines, each written down as a par sheet — reel strips, paylines, a
+paytable and a feature set — and run by a single engine.
+
+### The return figure is computed, not claimed
+
+Every machine publishes its return to player, and that number is derived from
+the machine rather than measured from play. `internal/slots` walks the strips
+and sums every outcome the reels can produce, weighted by how often they
+produce it, and runs each through the same code that pays a real player. The
+split between base game, scatters and free spins is exact, including the
+recursion where a free spin retriggers more free spins.
+
+Two things keep that figure honest:
+
+- **Stakes are restricted to levels that divide exactly into the paytable.**
+  Integer division would otherwise shave a fraction off every win and make the
+  published return a ceiling rather than a figure. `Game.Validate` refuses a
+  stake ladder that would round anything down.
+- **The maths is checked against brute force.** Small games whose every outcome
+  can be enumerated are played exhaustively in the tests and compared with the
+  closed-form result to within 1e-9, and the real machines are simulated for
+  1.5 million rounds each to confirm they converge on what they advertise.
+
+| Machine | Layout | Return |
+| --- | --- | --- |
+| Satoshi Sevens | 3×3, 5 lines | 95.73% |
+| Bitcoin Bonanza | 5×3, 20 lines, free spins ×3 | 96.01% |
+| Aztec Vault | 5×3, 25 lines, wild-rich free reels | 96.13% |
+| Lightning Ways | 5×4, 1024 ways, free spins ×3 | 96.16% |
+
+### Every spin can be checked
+
+The scheme is the poker one, applied per player. A server seed is drawn and
+only its SHA-256 is shown; the player contributes their own seed and can change
+it whenever they like; each spin uses the pair plus a counter that never
+repeats. Rotating the pair publishes the server seed, at which point every spin
+taken under it can be replayed by anybody.
+
+The algorithm is written out on `/casino/fairness` so a suspicious player can
+implement it themselves. It was developed that way: an independent
+reimplementation reproduced 1,021 paid spins and their free spins, reel for
+reel, from the published seeds alone.
+
+The reel stops are drawn with rejection sampling rather than a modulo, because
+folding a byte into a 55-stop strip would over-weight the first 56 stops — a
+small bias, and one that would fall the house's way.
+
+### There is no dial
+
+`slots.Play` is handed a game, a seed and a stake, and is given nothing else. It
+cannot see a balance, a session, a losing streak or the time of day, because
+none of those are in scope. The only way to change what a machine returns is to
+change its strips or its paytable in the source and ship it — at which point
+the published figure changes with it, since it is computed from the same file.
+
+`/admin/casino` shows each machine's published return against what it has
+actually paid. The gap is variance to be watched, not a control.
 
 ---
 
@@ -355,6 +446,10 @@ Prices come back in all three formats plus `odds_milli`, the canonical integer.
 go test ./...
 go test -race ./internal/betting/ ./internal/wallet/
 
+# The slow ones: 1.5M simulated rounds per slot machine, checking each
+# converges on its published return. Skipped by -short.
+go test ./internal/slots/ ./internal/casino/ -count=1
+
 # Run the suite against a real PostgreSQL server too. Each test gets its own
 # schema, so dialect drift is caught here rather than in production.
 AVAS_TEST_POSTGRES="postgres://postgres@localhost:5432/avas?sslmode=disable" \
@@ -381,3 +476,7 @@ produces the right balance through an unbalanced ledger is still broken.
 - [ ] Deposit/withdrawal reconciliation against on-chain state
 - [ ] Independent review of the settlement rules against your published terms
 - [ ] Self-exclusion shared with any national scheme you are required to join
+- [ ] Slot returns independently verified against `internal/slots` before you
+      advertise them, and the paytables signed off by whoever certifies you
+- [ ] A TURN server for the poker tables, since a mesh of home connections will
+      not otherwise connect

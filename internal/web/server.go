@@ -17,6 +17,7 @@ import (
 
 	"github.com/vesal1/avaswebsite/internal/betting"
 	"github.com/vesal1/avaswebsite/internal/bonus"
+	"github.com/vesal1/avaswebsite/internal/casino"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
 	"github.com/vesal1/avaswebsite/internal/pokerhouse"
@@ -66,6 +67,7 @@ type Server struct {
 	treasury   *treasury.Service
 	poker      *pokerhouse.House
 	signals    *pokerhouse.Signalling
+	casino     *casino.Service
 	log        *slog.Logger
 	// templates holds one parsed set per page. Each page defines a template
 	// named "content" that the shared layout calls, so the sets have to be
@@ -86,6 +88,7 @@ type Options struct {
 	Treasury   *treasury.Service
 	Poker      *pokerhouse.House
 	Signalling *pokerhouse.Signalling
+	Casino     *casino.Service
 	Logger     *slog.Logger
 }
 
@@ -105,6 +108,7 @@ func New(opts Options) (*Server, error) {
 		"Treasury":   opts.Treasury != nil,
 		"Poker":      opts.Poker != nil,
 		"Signalling": opts.Signalling != nil,
+		"Casino":     opts.Casino != nil,
 		"Logger":     opts.Logger != nil,
 	} {
 		if !present {
@@ -120,7 +124,8 @@ func New(opts Options) (*Server, error) {
 		cfg: opts.Config, store: opts.Store, betting: opts.Betting,
 		wallet: opts.Wallet, compliance: opts.Compliance,
 		bonus: opts.Bonus, treasury: opts.Treasury,
-		poker: opts.Poker, signals: opts.Signalling, log: opts.Logger,
+		poker: opts.Poker, signals: opts.Signalling, casino: opts.Casino,
+		log:       opts.Logger,
 		templates: templates, mux: http.NewServeMux(),
 		now: func() time.Time { return opts.Store.Now() },
 	}
@@ -209,9 +214,19 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /poker/tables/{id}/video", s.requireCustomer(s.handlePokerVideoConsent))
 	s.mux.HandleFunc("POST /poker/tables/{id}/signal", s.requireCustomer(s.handlePokerSignal))
 
+	s.mux.HandleFunc("GET /casino", s.handleCasinoLobby)
+	s.mux.HandleFunc("GET /casino/fairness", s.handleCasinoFairness)
+	s.mux.HandleFunc("GET /casino/history", s.requireCustomer(s.handleCasinoHistory))
+	s.mux.HandleFunc("GET /casino/spins/{id}", s.requireCustomer(s.handleCasinoSpin))
+	s.mux.HandleFunc("POST /casino/seed", s.requireCustomer(s.handleCasinoSeed))
+	s.mux.HandleFunc("POST /casino/rotate", s.requireCustomer(s.handleCasinoRotate))
+	s.mux.HandleFunc("GET /casino/{game}", s.handleCasinoGame)
+	s.mux.HandleFunc("POST /casino/{game}/spin", s.requireCustomer(s.handleCasinoPlay))
+
 	s.mux.HandleFunc("GET /promotions", s.handlePromotions)
 	s.mux.HandleFunc("POST /account/forfeit-bonus", s.requireCustomer(s.handleForfeitBonus))
 
+	s.mux.HandleFunc("GET /admin/casino", s.requireTrader(s.handleAdminCasino))
 	s.mux.HandleFunc("GET /admin/poker", s.requireTrader(s.handleAdminPoker))
 	s.mux.HandleFunc("POST /admin/poker", s.requireTrader(s.handleAdminCreatePokerTable))
 	s.mux.HandleFunc("POST /admin/poker/{id}/toggle", s.requireTrader(s.handleAdminTogglePokerTable))

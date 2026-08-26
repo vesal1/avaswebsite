@@ -1,0 +1,99 @@
+{{define "content"}}
+  {{$spin := .Data.Spin}}
+  {{$verified := .Data.Verified}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Spin {{$spin.ID}}</h1>
+      <div class="chips">
+        <a class="chip" href="/casino/history">My spins</a>
+        <a class="chip" href="/casino/{{$spin.GameKey}}">Back to the game</a>
+      </div>
+    </div>
+    <div class="panel-body">
+      <dl class="facts">
+        <div><dt>Game</dt><dd>{{$verified.Game.Name}}</dd></div>
+        <div><dt>Taken</dt><dd>{{datetime $spin.CreatedAt}}</dd></div>
+        <div><dt>Stake</dt><dd>{{btc $spin.StakeSat}} BTC</dd></div>
+        <div><dt>Returned</dt><dd>{{btc $spin.WinSat}} BTC</dd></div>
+        <div><dt>Free spins</dt><dd>{{$spin.FreeSpins}}</dd></div>
+        <div><dt>Published return</dt><dd>{{pct $spin.RTPBps}}</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Checking it</h2></div>
+    <div class="panel-body stack">
+      <dl class="facts">
+        <div><dt>Commitment</dt><dd class="mono small">{{$spin.Commitment}}</dd></div>
+        <div><dt>Your seed</dt><dd class="mono small">{{$spin.ClientSeed}}</dd></div>
+        <div><dt>Nonce</dt><dd>{{$spin.Nonce}}</dd></div>
+        <div><dt>Server seed</dt>
+          <dd class="mono small">{{if $spin.ServerSeed}}{{$spin.ServerSeed}}{{else}}still sealed{{end}}</dd></div>
+      </dl>
+
+      {{if .Data.Problem}}
+        <p class="notice bad">{{.Data.Problem}}</p>
+      {{else if not $spin.Verifiable}}
+        <p class="notice warn">
+          The seed behind this spin is still in use, so it has not been
+          published yet and this spin cannot be checked. Publish it from
+          <a href="/casino/history">your spin history</a> — every spin taken
+          under it becomes checkable at once, and a new pair is committed to
+          in the same moment.
+        </p>
+      {{else if $verified.Matches}}
+        <p class="notice good">
+          Checked. The published seed hashes to the commitment you were shown
+          before this spin, and replaying the machine from it produces exactly
+          the reels and the payout recorded here.
+        </p>
+      {{else}}
+        <p class="notice bad">
+          This spin does not replay to what was recorded. That should never
+          happen. Please send us the spin number at
+          <a href="mailto:{{.Support}}">{{.Support}}</a>.
+        </p>
+      {{end}}
+    </div>
+  </section>
+
+  {{with $verified.Recorded}}
+    <section class="panel">
+      <div class="panel-head"><h2>What the reels showed</h2></div>
+      <div class="panel-body stack">
+        {{template "spinWindow" dict "Game" $verified.Game "Spin" .Base "Label" "Paid spin"}}
+        {{range $index, $free := .Free}}
+          {{template "spinWindow" dict "Game" $verified.Game "Spin" $free "Label" (printf "Free spin %d" (add $index 1))}}
+        {{end}}
+      </div>
+    </section>
+  {{end}}
+{{end}}
+
+{{define "spinWindow"}}
+  <div class="spin-block">
+    <h3>{{.Label}}{{if gt .Spin.MultiplierX100 100}} · wins pay {{payX100 .Spin.MultiplierX100}}{{end}}</h3>
+    <div class="reels static">
+      {{range $reel := .Spin.Window}}
+        <div class="reel">
+          {{range $cell := $reel}}<div class="cell">{{symbolGlyph $.Game $cell}}</div>{{end}}
+        </div>
+      {{end}}
+    </div>
+    {{if .Spin.Wins}}
+      <ul class="win-list">
+        {{range .Spin.Wins}}
+          <li>
+            {{if eq .Kind "scatter"}}{{.Count}} {{.Name}} scattered
+            {{else if eq .Kind "ways"}}{{.Count}} {{.Name}} · {{.Ways}} ways
+            {{else}}Line {{.Line}} · {{.Count}} {{.Name}}{{end}}
+            — {{btc .AmountSat}} BTC
+          </li>
+        {{end}}
+      </ul>
+    {{else}}
+      <p class="muted small">No win.</p>
+    {{end}}
+  </div>
+{{end}}

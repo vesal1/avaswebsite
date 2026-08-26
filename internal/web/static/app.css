@@ -463,3 +463,100 @@ footer .age {
   overflow-y: auto;
   white-space: pre-wrap;
 }
+
+/* ---------------------------------------------------------------------------
+   Casino
+   ------------------------------------------------------------------------ */
+
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.game-card {
+  display: block;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-raised);
+  color: inherit;
+  text-decoration: none;
+}
+
+.game-card:hover { border-color: var(--accent); }
+.game-card h3 { margin: 0.5rem 0 0.25rem; }
+
+.game-card-reels {
+  display: flex;
+  gap: 0.35rem;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.reels {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+}
+
+.reel { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.reel .cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--bg-raised);
+}
+
+/* A winning cell is marked after the reels have stopped, never before: the
+   page has no idea what is coming until the server tells it. */
+.reel .cell.lit {
+  border-color: var(--good);
+  box-shadow: 0 0 0 2px var(--good) inset;
+}
+
+.reels.static .cell { width: 2.5rem; height: 2.5rem; font-size: 1.35rem; }
+
+.machine-readout {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+
+.win-line { font-weight: 600; }
+.win-line.good { color: var(--good); }
+.win-line.bad { color: var(--danger); }
+
+.machine-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.win-list { margin: 0.5rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.spin-block { margin-bottom: 1.25rem; }
+.spin-block h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+
+.symbol { font-size: 1.2rem; }
+.pay {
+  display: inline-block;
+  margin-right: 0.6rem;
+  white-space: nowrap;
+}
+
+.facts.tight dt, .facts.tight dd { font-size: 0.85rem; }

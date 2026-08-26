@@ -28,10 +28,12 @@ import (
 	"github.com/vesal1/avaswebsite/internal/betting"
 	"github.com/vesal1/avaswebsite/internal/bitcoin"
 	"github.com/vesal1/avaswebsite/internal/bonus"
+	"github.com/vesal1/avaswebsite/internal/casino"
 	"github.com/vesal1/avaswebsite/internal/compliance"
 	"github.com/vesal1/avaswebsite/internal/config"
 	"github.com/vesal1/avaswebsite/internal/pokerhouse"
 	"github.com/vesal1/avaswebsite/internal/seed"
+	"github.com/vesal1/avaswebsite/internal/slots"
 	"github.com/vesal1/avaswebsite/internal/store"
 	"github.com/vesal1/avaswebsite/internal/treasury"
 	"github.com/vesal1/avaswebsite/internal/wallet"
@@ -105,6 +107,7 @@ type application struct {
 	treasury   *treasury.Service
 	poker      *pokerhouse.House
 	signals    *pokerhouse.Signalling
+	casino     *casino.Service
 	log        *slog.Logger
 }
 
@@ -155,6 +158,14 @@ func build() (*application, error) {
 		return nil, err
 	}
 
+	// Price the slot floor before anything can be staked on it. A machine
+	// whose paytable does not add up should stop the binary, not reach a
+	// player unpriced.
+	if err := slots.Load(); err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	comp := compliance.New(db, cfg)
 	promotions := bonus.New(db, cfg)
 
@@ -170,6 +181,7 @@ func build() (*application, error) {
 		treasury: treasury.New(db, cfg),
 		poker:    pokerhouse.New(db, cfg, comp, promotions),
 		signals:  pokerhouse.NewSignalling(),
+		casino:   casino.New(db, comp, cfg).WithWagering(promotions),
 		log:      logger,
 	}, nil
 }
@@ -285,7 +297,8 @@ func serve(args []string) error {
 		Config: app.cfg, Store: app.store, Betting: app.betting,
 		Wallet: app.wallet, Compliance: app.compliance,
 		Bonus: app.bonus, Treasury: app.treasury,
-		Poker: app.poker, Signalling: app.signals, Logger: app.log,
+		Poker: app.poker, Signalling: app.signals, Casino: app.casino,
+		Logger: app.log,
 	})
 	if err != nil {
 		return err

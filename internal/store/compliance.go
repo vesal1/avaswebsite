@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -26,15 +27,26 @@ func (s *Store) SetPlayerLimit(ctx context.Context, limit PlayerLimit) (int64, e
 	return res.LastInsertId()
 }
 
-// EffectiveLimit returns the limit of a kind that binds right now: the
-// tightest among those already in force. Returns ok=false when the customer
-// has set no limit of that kind.
+// EffectiveLimit returns the limit of a kind that binds right now: the most
+// recently effective one among those already in force. Returns ok=false when
+// the customer has set no limit of that kind.
+//
+// Deliberately the newest in force rather than the smallest. A tightening is
+// written effective immediately and so becomes the newest at once; a
+// loosening is written with a future effective_from, so the older tighter
+// limit stays newest-in-force until the cooling-off period elapses. Taking
+// the minimum instead would mean a customer could never raise a limit again,
+// which is not what a cooling-off period is.
 func (s *Store) EffectiveLimit(ctx context.Context, userID int64, kind string, now time.Time) (int64, bool, error) {
 	var amount sql.NullInt64
 	err := s.db.QueryRowContext(ctx,
-		`SELECT MIN(amount) FROM player_limits
-		 WHERE user_id = ? AND kind = ? AND effective_from <= ? AND revoked_at IS NULL`,
+		`SELECT amount FROM player_limits
+		 WHERE user_id = ? AND kind = ? AND effective_from <= ? AND revoked_at IS NULL
+		 ORDER BY effective_from DESC, id DESC LIMIT 1`,
 		userID, kind, Timestamp(now)).Scan(&amount)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
 	if err != nil {
 		return 0, false, fmt.Errorf("store: effective limit: %w", err)
 	}

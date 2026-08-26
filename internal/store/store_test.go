@@ -246,6 +246,28 @@ func TestRecordDepositIsIdempotentPerOutput(t *testing.T) {
 	}
 }
 
+func TestTighteningALimitAppliesImmediately(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	userID := makeUser(t, s, "a@example.com")
+	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+
+	for _, amount := range []int64{5_000_000, 100_000} {
+		if _, err := s.SetPlayerLimit(ctx, PlayerLimit{
+			UserID: userID, Kind: LimitDepositDaily, Amount: amount, EffectiveFrom: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	amount, ok, err := s.EffectiveLimit(ctx, userID, LimitDepositDaily, now)
+	if err != nil || !ok {
+		t.Fatalf("expected a limit, ok=%v err=%v", ok, err)
+	}
+	if amount != 100_000 {
+		t.Errorf("effective limit = %d, want the tightening to bind at once", amount)
+	}
+}
+
 func TestEffectiveLimitIgnoresFutureIncreases(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -278,13 +300,13 @@ func TestEffectiveLimitIgnoresFutureIncreases(t *testing.T) {
 		t.Errorf("effective limit = %d, want the tighter 100000", amount)
 	}
 
-	// Once the cooling-off period passes, the looser limit applies.
+	// Once the cooling-off period has elapsed the looser limit takes over.
 	amount, _, err = s.EffectiveLimit(ctx, userID, LimitDepositDaily, now.Add(48*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if amount != 100_000 {
-		t.Errorf("effective limit = %d; MIN keeps the tighter limit until it is revoked", amount)
+	if amount != 5_000_000 {
+		t.Errorf("effective limit = %d, want the increase to have taken effect", amount)
 	}
 }
 

@@ -133,6 +133,11 @@ func scanDeposit(row interface{ Scan(...any) error }) (Deposit, error) {
 	return d, nil
 }
 
+// DepositByID loads a single deposit.
+func (s *Store) DepositByID(ctx context.Context, depositID int64) (Deposit, error) {
+	return scanDeposit(s.db.QueryRowContext(ctx, `SELECT `+depositColumns+` FROM deposits WHERE id = ?`, depositID))
+}
+
 // GetDepositTx loads a deposit inside an open transaction.
 func GetDepositTx(ctx context.Context, tx *sql.Tx, depositID int64) (Deposit, error) {
 	return scanDeposit(tx.QueryRowContext(ctx, `SELECT `+depositColumns+` FROM deposits WHERE id = ?`, depositID))

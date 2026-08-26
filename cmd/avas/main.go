@@ -1,5 +1,7 @@
 // Command avas runs the Avas Sportsbook.
 //
+//	avas migrate               apply pending schema migrations
+//	avas migrate-status        show which migrations have run
 //	avas serve                 start the web server
 //	avas seed                  load demonstration events across many sports
 //	avas create-user           create an account, optionally with a staff role
@@ -46,6 +48,10 @@ func run(args []string) error {
 		command, args = args[0], args[1:]
 	}
 	switch command {
+	case "migrate":
+		return migrate(args)
+	case "migrate-status":
+		return migrateStatus(args)
 	case "serve":
 		return serve(args)
 	case "seed":
@@ -66,16 +72,20 @@ func run(args []string) error {
 }
 
 func printUsage() {
-	fmt.Fprint(os.Stderr, `avas - the Avas Sportsbook
+	fmt.Fprint(os.Stderr, `avas - the Avas Sportsbook and casino
 
 Usage:
+  avas migrate [-print N]          apply pending schema migrations
+  avas migrate-status              show which migrations have run
   avas serve                       start the web server
   avas seed [-events N]            load demonstration events across many sports
   avas create-user -email E -password P [-role R] [-dob YYYY-MM-DD] [-country CC]
   avas sync-deposits               run one deposit reconciliation pass
   avas check-ledger                verify the ledger invariants and exit
 
-Configuration is read from the environment; see README.md.
+AVAS_DB accepts a PostgreSQL URL (postgres://user:pass@host:5432/avas)
+or a SQLite file path. Everything else is read from the environment;
+see README.md.
 `)
 }
 
@@ -113,6 +123,16 @@ func build() (*application, error) {
 		return nil, err
 	}
 
+	// Refuse to serve against a database whose schema is behind the binary:
+	// a missing column surfaces as a failed bet, not as a clear error.
+	if pending, err := pendingMigrations(db); err != nil {
+		db.Close()
+		return nil, err
+	} else if pending > 0 {
+		db.Close()
+		return nil, fmt.Errorf("database is %d migration(s) behind this build; run `avas migrate` first", pending)
+	}
+
 	provider, err := bitcoin.New(cfg.BitcoinProvider, bitcoin.Config{
 		Network:          cfg.BitcoinNetwork,
 		BTCPayURL:        cfg.BTCPayURL,
@@ -138,6 +158,98 @@ func build() (*application, error) {
 }
 
 func (a *application) Close() error { return a.store.Close() }
+
+func pendingMigrations(db *store.Store) (int, error) {
+	states, err := db.MigrationStatus(context.Background())
+	if err != nil {
+		return 0, err
+	}
+	var pending int
+	for _, state := range states {
+		if state.Mismatch {
+			return 0, fmt.Errorf("%w: migration %04d (%s) has been edited since it was applied",
+				store.ErrDirtySchema, state.Version, state.Name)
+		}
+		if !state.Applied {
+			pending++
+		}
+	}
+	return pending, nil
+}
+
+// migrate applies pending schema migrations. It is deliberately a separate
+// command from `serve`: a deploy that reshapes the schema under live traffic
+// is how a half-applied migration becomes an outage.
+func migrate(args []string) error {
+	flags := flag.NewFlagSet("migrate", flag.ExitOnError)
+	print := flags.Int("print", 0, "print the SQL of one migration instead of applying anything")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	cfg := config.Load()
+	db, err := store.Open(cfg.DatabasePath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if *print > 0 {
+		text, err := store.MigrationSQL(db.Dialect(), *print)
+		if err != nil {
+			return err
+		}
+		fmt.Print(text)
+		return nil
+	}
+
+	fmt.Printf("database: %s\n", db.DialectName())
+	applied, err := db.Migrate(context.Background())
+	if err != nil {
+		return err
+	}
+	if applied == 0 {
+		fmt.Println("schema is already up to date")
+		return nil
+	}
+	fmt.Printf("applied %d migration(s)\n", applied)
+	return nil
+}
+
+func migrateStatus(args []string) error {
+	cfg := config.Load()
+	db, err := store.Open(cfg.DatabasePath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	states, err := db.MigrationStatus(context.Background())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("database: %s\n\n", db.DialectName())
+	fmt.Printf("%-8s %-34s %-10s %s\n", "VERSION", "NAME", "STATUS", "APPLIED")
+	var pending int
+	for _, state := range states {
+		status, when := "pending", ""
+		switch {
+		case state.Mismatch:
+			status = "CHANGED"
+			when = state.AppliedAt.Format(time.RFC3339)
+		case state.Applied:
+			status = "applied"
+			when = state.AppliedAt.Format(time.RFC3339)
+		default:
+			pending++
+		}
+		fmt.Printf("%04d     %-34s %-10s %s\n", state.Version, state.Name, status, when)
+	}
+	if pending > 0 {
+		fmt.Printf("\n%d migration(s) pending; run `avas migrate`\n", pending)
+	}
+	return nil
+}
 
 func serve(args []string) error {
 	flags := flag.NewFlagSet("serve", flag.ExitOnError)

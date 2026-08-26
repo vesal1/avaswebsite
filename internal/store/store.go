@@ -5,16 +5,14 @@ package store
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // cgo-free SQLite driver
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
+	_ "modernc.org/sqlite"             // cgo-free SQLite driver
 )
-
-//go:embed schema.sql
-var schemaSQL string
 
 // Common errors callers are expected to branch on.
 var (
@@ -29,33 +27,88 @@ type Clock func() time.Time
 
 // Store is a handle on the database.
 type Store struct {
-	db    *sql.DB
+	db    *DB
 	clock Clock
 }
 
-// Open connects to the SQLite database at path, applies the schema and returns
-// a ready Store. The path ":memory:" gives an in-process database for tests.
-func Open(path string) (*Store, error) {
-	dsn := path
-	if path == ":memory:" {
-		// A shared cache keeps every connection in the pool looking at the
-		// same in-memory database rather than each creating its own.
-		dsn = "file::memory:?cache=shared"
-	}
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("store: open %s: %w", path, err)
-	}
-	// SQLite takes a single writer. Serialising connections avoids
-	// SQLITE_BUSY entirely at the cost of write concurrency we do not need.
-	db.SetMaxOpenConns(1)
-	db.SetConnMaxLifetime(0)
+// Open connects to the database named by dsn and returns a ready Store.
+//
+// The dialect is inferred: a PostgreSQL URL or key/value string connects to
+// PostgreSQL, anything else is a SQLite file path. ":memory:" gives an
+// in-process SQLite database for tests.
+//
+// Open does not create or alter tables. Schema changes go through Migrate, so
+// that a running server never silently reshapes a production database.
+func Open(dsn string) (*Store, error) {
+	dialect := dialectFromDSN(dsn)
 
-	if _, err := db.Exec(schemaSQL); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("store: apply schema: %w", err)
+	connection := dsn
+	if dialect == DialectSQLite {
+		if dsn == ":memory:" {
+			// A shared cache keeps every pooled connection looking at the same
+			// in-memory database rather than each creating its own.
+			connection = "file::memory:?cache=shared"
+		}
+		// Foreign keys are off by default in SQLite and have to be asked for
+		// on every connection, or a cascade silently does nothing.
+		if !strings.Contains(connection, "_pragma=") {
+			separator := "?"
+			if strings.Contains(connection, "?") {
+				separator = "&"
+			}
+			connection += separator + "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+		}
 	}
-	return &Store{db: db, clock: time.Now}, nil
+
+	db, err := sql.Open(dialect.driverName(), connection)
+	if err != nil {
+		return nil, fmt.Errorf("store: open %s: %w", describeDialect(dialect), err)
+	}
+
+	switch dialect {
+	case DialectPostgres:
+		db.SetMaxOpenConns(25)
+		db.SetMaxIdleConns(5)
+		db.SetConnMaxLifetime(30 * time.Minute)
+	default:
+		// SQLite takes a single writer. Serialising connections avoids
+		// SQLITE_BUSY entirely, at the cost of write concurrency that a
+		// single-server install does not need.
+		db.SetMaxOpenConns(1)
+		db.SetConnMaxLifetime(0)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: cannot reach %s: %w", describeDialect(dialect), err)
+	}
+
+	if dialect == DialectSQLite {
+		// WAL keeps readers from blocking behind the writer.
+		if _, err := db.ExecContext(ctx, "PRAGMA journal_mode = WAL"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("store: enable WAL: %w", err)
+		}
+	}
+
+	return &Store{db: &DB{db: db, dialect: dialect}, clock: time.Now}, nil
+}
+
+// OpenAndMigrate opens the database and brings the schema up to date. It is
+// what development and tests use; production runs `avas migrate` separately so
+// a deploy cannot half-apply a schema change under live traffic.
+func OpenAndMigrate(dsn string) (*Store, error) {
+	s, err := Open(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.Migrate(context.Background()); err != nil {
+		s.Close()
+		return nil, err
+	}
+	return s, nil
 }
 
 // WithClock replaces the store's clock. Test-only.
@@ -67,31 +120,38 @@ func (s *Store) WithClock(clock Clock) *Store {
 // Now is the store's idea of the current time, in UTC.
 func (s *Store) Now() time.Time { return s.clock().UTC() }
 
-// DB exposes the raw handle for the few callers that need it (health checks).
-func (s *Store) DB() *sql.DB { return s.db }
+// DB exposes the dialect-aware handle.
+func (s *Store) DB() *DB { return s.db }
+
+// Dialect reports which database this store talks to.
+func (s *Store) Dialect() Dialect { return s.db.dialect }
+
+// DialectName is the human-readable database name, for the admin health view.
+func (s *Store) DialectName() string { return describeDialect(s.db.dialect) }
 
 // Close releases the database handle.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error { return s.db.db.Close() }
 
 // Tx runs fn inside a transaction, committing on success and rolling back on
 // any error or panic. Every multi-statement write in this package goes through
 // it: a partially applied bet or ledger transaction is not recoverable.
-func (s *Store) Tx(ctx context.Context, fn func(*sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) Tx(ctx context.Context, fn func(*Tx) error) error {
+	raw, err := s.db.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: begin: %w", err)
 	}
+	tx := &Tx{tx: raw, dialect: s.db.dialect}
 	defer func() {
 		if r := recover(); r != nil {
-			_ = tx.Rollback()
+			_ = raw.Rollback()
 			panic(r)
 		}
 	}()
 	if err := fn(tx); err != nil {
-		_ = tx.Rollback()
+		_ = raw.Rollback()
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := raw.Commit(); err != nil {
 		return fmt.Errorf("store: commit: %w", err)
 	}
 	return nil

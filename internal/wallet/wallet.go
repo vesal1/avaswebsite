@@ -9,7 +9,6 @@ package wallet
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
@@ -257,7 +256,7 @@ func (s *Service) CreditDeposit(ctx context.Context, depositID int64) (bool, err
 
 	flags := s.compliance.ScreenDeposit(user, deposit.AmountSat)
 
-	err = s.store.Tx(ctx, func(tx *sql.Tx) error {
+	err = s.store.Tx(ctx, func(tx *store.Tx) error {
 		at := store.Timestamp(s.now())
 		txnID, err := store.PostTxn(ctx, tx, at, store.TxnSpec{
 			Kind:    store.TxnDeposit,
@@ -328,7 +327,7 @@ func (s *Service) RequestWithdrawal(ctx context.Context, userID int64, address s
 	}
 
 	var withdrawalID int64
-	err = s.store.Tx(ctx, func(tx *sql.Tx) error {
+	err = s.store.Tx(ctx, func(tx *store.Tx) error {
 		// Read the balance inside the transaction so two concurrent requests
 		// cannot both pass the check against the same funds.
 		balance, err := store.BalanceSatTx(ctx, tx, userID)
@@ -407,7 +406,7 @@ func (s *Service) ReleaseWithdrawal(ctx context.Context, withdrawalID, officerID
 	}
 
 	at := store.Timestamp(s.now())
-	if err := s.store.Tx(ctx, func(tx *sql.Tx) error {
+	if err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		return store.SetWithdrawalStatusTx(ctx, tx, withdrawalID,
 			[]string{store.WithdrawalRequested, store.WithdrawalReview, store.WithdrawalApproved},
 			store.WithdrawalBroadcast, officerID, "released", at)
@@ -439,7 +438,7 @@ func (s *Service) ReleaseWithdrawal(ctx context.Context, withdrawalID, officerID
 		return err
 	}
 	// The coins have left; move the suspense balance out to the network.
-	if err := s.store.Tx(ctx, func(tx *sql.Tx) error {
+	if err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		_, err := store.PostTxn(ctx, tx, store.Timestamp(s.now()), store.TxnSpec{
 			Kind:      store.TxnWithdrawal,
 			Memo:      "Broadcast " + result.TxID,
@@ -476,7 +475,7 @@ func (s *Service) RejectWithdrawal(ctx context.Context, withdrawalID, officerID 
 			ErrNotPermitted, withdrawalID, withdrawal.Status)
 	}
 
-	if err := s.store.Tx(ctx, func(tx *sql.Tx) error {
+	if err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		at := store.Timestamp(s.now())
 		if err := store.SetWithdrawalStatusTx(ctx, tx, withdrawalID,
 			[]string{store.WithdrawalRequested, store.WithdrawalReview, store.WithdrawalApproved},
@@ -523,7 +522,7 @@ func (s *Service) CancelWithdrawal(ctx context.Context, userID, withdrawalID int
 		return fmt.Errorf("%w: this withdrawal is already %s", ErrNotPermitted, withdrawal.Status)
 	}
 
-	if err := s.store.Tx(ctx, func(tx *sql.Tx) error {
+	if err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		at := store.Timestamp(s.now())
 		if err := store.SetWithdrawalStatusTx(ctx, tx, withdrawalID,
 			[]string{store.WithdrawalRequested, store.WithdrawalReview},

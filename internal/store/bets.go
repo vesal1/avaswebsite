@@ -8,12 +8,12 @@ import (
 )
 
 // InsertBetTx writes a bet and its legs inside an open transaction.
-func InsertBetTx(ctx context.Context, tx *sql.Tx, at string, bet Bet) (int64, error) {
+func InsertBetTx(ctx context.Context, tx *Tx, at string, bet Bet) (int64, error) {
 	accepted := 0
 	if bet.AcceptedOddsChange {
 		accepted = 1
 	}
-	res, err := tx.ExecContext(ctx,
+	id, err := tx.InsertID(ctx,
 		`INSERT INTO bets (user_id, kind, stake_sat, odds_milli, potential_payout_sat,
 		                   status, placed_at, ip, accepted_odds_change)
 		 VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?)`,
@@ -22,7 +22,7 @@ func InsertBetTx(ctx context.Context, tx *sql.Tx, at string, bet Bet) (int64, er
 	if err != nil {
 		return 0, fmt.Errorf("store: insert bet: %w", err)
 	}
-	betID, err := res.LastInsertId()
+	betID := id
 	if err != nil {
 		return 0, err
 	}
@@ -161,7 +161,7 @@ func (s *Store) legsForBets(ctx context.Context, betIDs ...int64) ([]BetLeg, err
 
 // OpenBetIDsForSelection returns the ids of open bets with a leg on a
 // selection. Settlement walks these rather than every open bet.
-func OpenBetIDsForSelectionTx(ctx context.Context, tx *sql.Tx, selectionID int64) ([]int64, error) {
+func OpenBetIDsForSelectionTx(ctx context.Context, tx *Tx, selectionID int64) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx,
 		`SELECT DISTINCT b.id FROM bets b
 		 JOIN bet_legs l ON l.bet_id = b.id
@@ -182,7 +182,7 @@ func OpenBetIDsForSelectionTx(ctx context.Context, tx *sql.Tx, selectionID int64
 }
 
 // GetBetTx loads a bet with its legs inside an open transaction.
-func GetBetTx(ctx context.Context, tx *sql.Tx, betID int64) (Bet, error) {
+func GetBetTx(ctx context.Context, tx *Tx, betID int64) (Bet, error) {
 	bet, err := scanBet(tx.QueryRowContext(ctx, `SELECT `+betColumns+` FROM bets WHERE id = ?`, betID))
 	if err != nil {
 		return Bet{}, err
@@ -211,7 +211,7 @@ func GetBetTx(ctx context.Context, tx *sql.Tx, betID int64) (Bet, error) {
 }
 
 // SetLegStatusTx grades one leg of every open bet riding on a selection.
-func SetLegStatusTx(ctx context.Context, tx *sql.Tx, selectionID int64, status string) error {
+func SetLegStatusTx(ctx context.Context, tx *Tx, selectionID int64, status string) error {
 	_, err := tx.ExecContext(ctx,
 		`UPDATE bet_legs SET status = ? WHERE selection_id = ? AND status = 'open'`,
 		status, selectionID)
@@ -222,7 +222,7 @@ func SetLegStatusTx(ctx context.Context, tx *sql.Tx, selectionID int64, status s
 }
 
 // SettleBetTx records a bet's final outcome and payout.
-func SettleBetTx(ctx context.Context, tx *sql.Tx, betID int64, status string, payoutSat int64, at string) error {
+func SettleBetTx(ctx context.Context, tx *Tx, betID int64, status string, payoutSat int64, at string) error {
 	res, err := tx.ExecContext(ctx,
 		`UPDATE bets SET status = ?, payout_sat = ?, settled_at = ? WHERE id = ? AND status = 'open'`,
 		status, payoutSat, at, betID)
@@ -255,7 +255,7 @@ func (s *Store) LiabilityForSelection(ctx context.Context, selectionID int64) (i
 
 // LiabilityForSelectionTx is LiabilityForSelection inside an open transaction,
 // so a stake check and the bet it admits cannot race each other.
-func LiabilityForSelectionTx(ctx context.Context, tx *sql.Tx, selectionID int64) (int64, error) {
+func LiabilityForSelectionTx(ctx context.Context, tx *Tx, selectionID int64) (int64, error) {
 	var total sql.NullInt64
 	err := tx.QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(b.potential_payout_sat), 0) FROM bets b

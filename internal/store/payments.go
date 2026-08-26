@@ -14,7 +14,7 @@ import (
 
 // SaveDepositAddress records an address issued to a customer.
 func (s *Store) SaveDepositAddress(ctx context.Context, addr DepositAddress) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO deposit_addresses (user_id, address, provider, provider_ref, network, created_at, active)
 		 VALUES (?, ?, ?, ?, ?, ?, 1)`,
 		addr.UserID, addr.Address, addr.Provider, addr.ProviderRef, addr.Network, Timestamp(s.Now()))
@@ -24,7 +24,7 @@ func (s *Store) SaveDepositAddress(ctx context.Context, addr DepositAddress) (in
 		}
 		return 0, fmt.Errorf("store: save deposit address: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // ActiveDepositAddress returns the customer's current address, if any.
@@ -95,7 +95,7 @@ func (s *Store) RecordDeposit(ctx context.Context, d Deposit) (int64, error) {
 		if d.Confirmations > 0 {
 			status = DepositConfirmed
 		}
-		res, insertErr := s.db.ExecContext(ctx,
+		id, insertErr := s.db.InsertID(ctx,
 			`INSERT INTO deposits (user_id, address, txid, vout, amount_sat, confirmations,
 			                       status, first_seen_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -104,7 +104,7 @@ func (s *Store) RecordDeposit(ctx context.Context, d Deposit) (int64, error) {
 		if insertErr != nil {
 			return 0, fmt.Errorf("store: record deposit: %w", insertErr)
 		}
-		return res.LastInsertId()
+		return id, nil
 	default:
 		return 0, fmt.Errorf("store: lookup deposit: %w", err)
 	}
@@ -139,7 +139,7 @@ func (s *Store) DepositByID(ctx context.Context, depositID int64) (Deposit, erro
 }
 
 // GetDepositTx loads a deposit inside an open transaction.
-func GetDepositTx(ctx context.Context, tx *sql.Tx, depositID int64) (Deposit, error) {
+func GetDepositTx(ctx context.Context, tx *Tx, depositID int64) (Deposit, error) {
 	return scanDeposit(tx.QueryRowContext(ctx, `SELECT `+depositColumns+` FROM deposits WHERE id = ?`, depositID))
 }
 
@@ -190,7 +190,7 @@ func (s *Store) CreditableDeposits(ctx context.Context, minConfirmations int) ([
 
 // MarkDepositCreditedTx finalises a deposit against its ledger transaction.
 // The status guard is what stops a concurrent crediting run paying twice.
-func MarkDepositCreditedTx(ctx context.Context, tx *sql.Tx, depositID, ledgerTxnID int64, at string) error {
+func MarkDepositCreditedTx(ctx context.Context, tx *Tx, depositID, ledgerTxnID int64, at string) error {
 	res, err := tx.ExecContext(ctx,
 		`UPDATE deposits SET status = 'credited', credited_at = ?, ledger_txn_id = ?
 		 WHERE id = ? AND status IN ('pending', 'confirmed')`, at, ledgerTxnID, depositID)
@@ -228,15 +228,15 @@ func (s *Store) DepositedSince(ctx context.Context, userID int64, since time.Tim
 // ---------------------------------------------------------------------------
 
 // InsertWithdrawalTx records a withdrawal request inside an open transaction.
-func InsertWithdrawalTx(ctx context.Context, tx *sql.Tx, w Withdrawal, at string) (int64, error) {
-	res, err := tx.ExecContext(ctx,
+func InsertWithdrawalTx(ctx context.Context, tx *Tx, w Withdrawal, at string) (int64, error) {
+	id, err := tx.InsertID(ctx,
 		`INSERT INTO withdrawals (user_id, address, amount_sat, fee_sat, status, requested_at, ledger_txn_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		w.UserID, w.Address, w.AmountSat, w.FeeSat, w.Status, at, nullInt64(w.LedgerTxnID))
 	if err != nil {
 		return 0, fmt.Errorf("store: insert withdrawal: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 const withdrawalColumns = `id, user_id, address, amount_sat, fee_sat, status, txid, requested_at,
@@ -270,7 +270,7 @@ func (s *Store) GetWithdrawal(ctx context.Context, id int64) (Withdrawal, error)
 }
 
 // GetWithdrawalTx loads a withdrawal inside an open transaction.
-func GetWithdrawalTx(ctx context.Context, tx *sql.Tx, id int64) (Withdrawal, error) {
+func GetWithdrawalTx(ctx context.Context, tx *Tx, id int64) (Withdrawal, error) {
 	return scanWithdrawal(tx.QueryRowContext(ctx,
 		`SELECT `+withdrawalColumns+` FROM withdrawals WHERE id = ?`, id))
 }
@@ -327,7 +327,7 @@ func (s *Store) WithdrawalsByStatus(ctx context.Context, statuses ...string) ([]
 
 // SetWithdrawalStatusTx moves a withdrawal forward, guarding against a
 // transition from a state that no longer permits it.
-func SetWithdrawalStatusTx(ctx context.Context, tx *sql.Tx, id int64, from []string, to string, decidedBy int64, reason, at string) error {
+func SetWithdrawalStatusTx(ctx context.Context, tx *Tx, id int64, from []string, to string, decidedBy int64, reason, at string) error {
 	args := []any{to, at, nullInt64(decidedBy), reason, id}
 	query := `UPDATE withdrawals SET status = ?, decided_at = ?, decided_by = ?, reason = ?
 	          WHERE id = ?`

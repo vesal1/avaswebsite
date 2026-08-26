@@ -28,13 +28,13 @@ func (s *Store) UpsertCompetition(ctx context.Context, sportKey, name, region st
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("store: lookup competition: %w", err)
 	}
-	res, err := s.db.ExecContext(ctx,
+	id, err = s.db.InsertID(ctx,
 		`INSERT INTO competitions (sport_key, name, region, created_at) VALUES (?, ?, ?, ?)`,
 		sportKey, name, region, Timestamp(s.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("store: create competition: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // CompetitionsForSport lists a sport's competitions.
@@ -73,7 +73,7 @@ type NewEvent struct {
 
 // CreateEvent inserts an event and returns its id.
 func (s *Store) CreateEvent(ctx context.Context, in NewEvent) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO events (sport_key, competition_id, name, format, starts_at, venue, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		in.SportKey, nullInt64(in.CompetitionID), in.Name, in.Format,
@@ -81,7 +81,7 @@ func (s *Store) CreateEvent(ctx context.Context, in NewEvent) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("store: create event: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 const eventColumns = `e.id, e.sport_key, COALESCE(e.competition_id, 0), COALESCE(c.name, ''),
@@ -215,14 +215,14 @@ func (s *Store) CountEventsBySport(ctx context.Context, statuses ...string) (map
 
 // AddParticipant adds a competitor to an event.
 func (s *Store) AddParticipant(ctx context.Context, p Participant) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO participants (event_id, name, short_name, nationality, home_away, sort_order)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		p.EventID, p.Name, p.ShortName, p.Nationality, homeAwayOrNeutral(p.HomeAway), p.SortOrder)
 	if err != nil {
 		return 0, fmt.Errorf("store: add participant: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 func homeAwayOrNeutral(value string) string {
@@ -261,7 +261,7 @@ func (s *Store) ParticipantsForEvent(ctx context.Context, eventID int64) ([]Part
 }
 
 // RecordResult writes a competitor's final score and finishing position.
-func (s *Store) RecordResult(ctx context.Context, tx *sql.Tx, participantID int64, score sql.NullInt64, position int, withdrawn bool) error {
+func (s *Store) RecordResult(ctx context.Context, tx *Tx, participantID int64, score sql.NullInt64, position int, withdrawn bool) error {
 	flag := 0
 	if withdrawn {
 		flag = 1
@@ -298,7 +298,7 @@ func (s *Store) CreateMarket(ctx context.Context, in NewMarket) (int64, error) {
 	if margin <= 0 {
 		margin = 500
 	}
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO markets (event_id, kind, title, line_x100, period, subject_participant_id,
 		                      margin_bps, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -307,12 +307,12 @@ func (s *Store) CreateMarket(ctx context.Context, in NewMarket) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("store: create market: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // AddSelection inserts a selection into a market.
 func (s *Store) AddSelection(ctx context.Context, sel Selection) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO selections (market_id, participant_id, name, outcome_code, odds_milli,
 		                         sort_order, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -320,10 +320,6 @@ func (s *Store) AddSelection(ctx context.Context, sel Selection) (int64, error) 
 		sel.OddsMilli, sel.SortOrder, Timestamp(s.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("store: add selection: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, err
 	}
 	// The opening price is the first row of the market's price history.
 	if _, err := s.db.ExecContext(ctx,
@@ -459,7 +455,7 @@ func (s *Store) GetSelectionDetail(ctx context.Context, selectionID int64) (Sele
 
 // GetSelectionDetailTx is GetSelectionDetail inside an open transaction, so a
 // bet's validation and its stake debit see the same snapshot of the odds.
-func GetSelectionDetailTx(ctx context.Context, tx *sql.Tx, selectionID int64) (SelectionDetail, error) {
+func GetSelectionDetailTx(ctx context.Context, tx *Tx, selectionID int64) (SelectionDetail, error) {
 	return scanSelectionDetail(tx.QueryRowContext(ctx, selectionDetailQuery+` WHERE s.id = ?`, selectionID))
 }
 
@@ -497,7 +493,7 @@ func scanSelectionDetail(row interface{ Scan(...any) error }) (SelectionDetail, 
 
 // UpdateOdds moves a price and records the movement in the price history.
 func (s *Store) UpdateOdds(ctx context.Context, selectionID, oddsMilli int64, reason string) error {
-	return s.Tx(ctx, func(tx *sql.Tx) error {
+	return s.Tx(ctx, func(tx *Tx) error {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE selections SET odds_milli = ? WHERE id = ? AND status IN ('open', 'suspended')`,
 			oddsMilli, selectionID)

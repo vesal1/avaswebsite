@@ -24,7 +24,7 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "wallet.sqlite3"))
+	s, err := store.OpenAndMigrate(filepath.Join(t.TempDir(), "wallet.sqlite3"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

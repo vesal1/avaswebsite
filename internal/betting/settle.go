@@ -46,7 +46,7 @@ func (s *Service) SettleEvent(ctx context.Context, eventID int64, result Result,
 	}
 
 	// Record the result first so it is visible even if a market fails to grade.
-	if err := s.store.Tx(ctx, func(tx *sql.Tx) error {
+	if err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		for _, outcome := range result.Participants {
 			var score sql.NullInt64
 			if outcome.HasScore {
@@ -196,7 +196,7 @@ func (s *Service) applyOutcomes(ctx context.Context, market store.Market, outcom
 	var betsSettled int
 	var paidOut int64
 
-	err := s.store.Tx(ctx, func(tx *sql.Tx) error {
+	err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		at := store.Timestamp(s.now())
 		affected := make(map[int64]bool)
 
@@ -240,7 +240,7 @@ func (s *Service) applyOutcomes(ctx context.Context, market store.Market, outcom
 
 // settleBetIfComplete settles a bet once every leg is decided. A bet with an
 // undecided leg is left open.
-func (s *Service) settleBetIfComplete(ctx context.Context, tx *sql.Tx, betID int64, at string, actorID int64) (bool, int64, error) {
+func (s *Service) settleBetIfComplete(ctx context.Context, tx *store.Tx, betID int64, at string, actorID int64) (bool, int64, error) {
 	bet, err := store.GetBetTx(ctx, tx, betID)
 	if err != nil {
 		return false, 0, err

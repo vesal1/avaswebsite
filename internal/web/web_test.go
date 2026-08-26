@@ -27,7 +27,7 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "web.sqlite3"))
+	db, err := store.OpenAndMigrate(filepath.Join(t.TempDir(), "web.sqlite3"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

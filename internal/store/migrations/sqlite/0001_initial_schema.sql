@@ -1,4 +1,4 @@
--- Avas Sportsbook schema.
+-- Avas Sportsbook: initial schema (SQLite).
 --
 -- Conventions that hold throughout:
 --   * Every monetary column is an INTEGER count of satoshi. No floats.
@@ -6,9 +6,6 @@
 --   * Handicap and total lines are stored x100 so that quarter lines
 --     (-0.25, 2.75) are exact integers.
 --   * Timestamps are RFC3339 UTC strings, which sort lexicographically.
-
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
 
 -- ---------------------------------------------------------------------------
 -- Accounts and access

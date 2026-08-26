@@ -16,7 +16,7 @@ import (
 // loosening is written with a future effective_from so the old, tighter limit
 // keeps applying until the cooling-off period has passed.
 func (s *Store) SetPlayerLimit(ctx context.Context, limit PlayerLimit) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO player_limits (user_id, kind, amount, effective_from, requested_at)
 		 VALUES (?, ?, ?, ?, ?)`,
 		limit.UserID, limit.Kind, limit.Amount,
@@ -24,7 +24,7 @@ func (s *Store) SetPlayerLimit(ctx context.Context, limit PlayerLimit) (int64, e
 	if err != nil {
 		return 0, fmt.Errorf("store: set player limit: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // EffectiveLimit returns the limit of a kind that binds right now: the most
@@ -115,14 +115,14 @@ func (s *Store) CreateExclusion(ctx context.Context, ex Exclusion) (int64, error
 	if !ex.Permanent && !ex.EndsAt.IsZero() {
 		endsAt = Timestamp(ex.EndsAt)
 	}
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO exclusions (user_id, kind, starts_at, ends_at, created_at, reason)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		ex.UserID, ex.Kind, Timestamp(ex.StartsAt), endsAt, Timestamp(s.Now()), ex.Reason)
 	if err != nil {
 		return 0, fmt.Errorf("store: create exclusion: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // ActiveExclusion returns the exclusion currently barring play, if any.
@@ -169,19 +169,19 @@ func (s *Store) RaiseFlag(ctx context.Context, flag ComplianceFlag) (int64, erro
 	if severity == "" {
 		severity = "info"
 	}
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO compliance_flags (user_id, kind, severity, detail, raised_at)
 		 VALUES (?, ?, ?, ?, ?)`,
 		flag.UserID, flag.Kind, severity, flag.Detail, Timestamp(s.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("store: raise flag: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // RaiseFlagTx raises a flag inside an open transaction, so a flag raised by a
 // money movement commits or rolls back with it.
-func RaiseFlagTx(ctx context.Context, tx *sql.Tx, flag ComplianceFlag, at string) error {
+func RaiseFlagTx(ctx context.Context, tx *Tx, flag ComplianceFlag, at string) error {
 	severity := flag.Severity
 	if severity == "" {
 		severity = "info"
@@ -278,13 +278,13 @@ func (s *Store) HasOpenCriticalFlag(ctx context.Context, userID int64) (bool, er
 
 // SubmitKYCDocument records a reference to a document held elsewhere.
 func (s *Store) SubmitKYCDocument(ctx context.Context, doc KYCDocument) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO kyc_documents (user_id, kind, reference, submitted_at) VALUES (?, ?, ?, ?)`,
 		doc.UserID, doc.Kind, doc.Reference, Timestamp(s.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("store: submit kyc document: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 // KYCDocumentsForUser lists a customer's submitted documents.

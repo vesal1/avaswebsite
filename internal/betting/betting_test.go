@@ -2,7 +2,6 @@ package betting
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -25,7 +24,7 @@ type rig struct {
 
 func newRig(t *testing.T) *rig {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "betting.sqlite3"))
+	s, err := store.OpenAndMigrate(filepath.Join(t.TempDir(), "betting.sqlite3"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -68,7 +67,7 @@ func newRig(t *testing.T) *rig {
 func (r *rig) fund(amountSat int64) {
 	r.t.Helper()
 	ctx := context.Background()
-	if err := r.store.Tx(ctx, func(tx *sql.Tx) error {
+	if err := r.store.Tx(ctx, func(tx *store.Tx) error {
 		_, err := store.PostTxn(ctx, tx, store.Timestamp(r.now), store.TxnSpec{
 			Kind: store.TxnDeposit,
 			Entries: []store.Entry{

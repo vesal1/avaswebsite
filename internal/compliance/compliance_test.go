@@ -12,7 +12,7 @@ import (
 
 func newService(t *testing.T, configure func(*config.Config)) (*Service, *store.Store, *time.Time) {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "compliance.sqlite3"))
+	s, err := store.OpenAndMigrate(filepath.Join(t.TempDir(), "compliance.sqlite3"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

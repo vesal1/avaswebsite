@@ -29,7 +29,7 @@ type TxnSpec struct {
 // The entries must sum to exactly zero. This is checked here rather than
 // trusted from the caller, because an unbalanced ledger cannot be repaired
 // after the fact: there is no record of which side was wrong.
-func PostTxn(ctx context.Context, tx *sql.Tx, at string, spec TxnSpec) (int64, error) {
+func PostTxn(ctx context.Context, tx *Tx, at string, spec TxnSpec) (int64, error) {
 	if len(spec.Entries) < 2 {
 		return 0, fmt.Errorf("%w: a transaction needs at least two entries", ErrUnbalanced)
 	}
@@ -47,14 +47,14 @@ func PostTxn(ctx context.Context, tx *sql.Tx, at string, spec TxnSpec) (int64, e
 		return 0, fmt.Errorf("%w: entries sum to %d, not 0", ErrUnbalanced, sum)
 	}
 
-	res, err := tx.ExecContext(ctx,
+	id, err := tx.InsertID(ctx,
 		`INSERT INTO ledger_txns (kind, at, memo, ref_type, ref_id, created_by)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		spec.Kind, at, spec.Memo, spec.RefType, nullInt64(spec.RefID), nullInt64(spec.CreatedBy))
 	if err != nil {
 		return 0, fmt.Errorf("store: insert ledger txn: %w", err)
 	}
-	txnID, err := res.LastInsertId()
+	txnID := id
 	if err != nil {
 		return 0, fmt.Errorf("store: ledger txn id: %w", err)
 	}
@@ -79,7 +79,7 @@ func PostTxn(ctx context.Context, tx *sql.Tx, at string, spec TxnSpec) (int64, e
 // BalanceSatTx returns a customer's withdrawable balance inside a transaction.
 // The balance is a sum over the ledger, never a stored column, so it cannot
 // drift away from the entries that explain it.
-func BalanceSatTx(ctx context.Context, tx *sql.Tx, userID int64) (int64, error) {
+func BalanceSatTx(ctx context.Context, tx *Tx, userID int64) (int64, error) {
 	var balance sql.NullInt64
 	err := tx.QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount_sat), 0) FROM ledger_entries
@@ -179,10 +179,13 @@ func (s *Store) CheckLedger(ctx context.Context) ([]LedgerProblem, error) {
 		return nil, err
 	}
 
+	// HAVING repeats the aggregate rather than referring to the select alias:
+	// PostgreSQL does not resolve output column names in HAVING, even though
+	// SQLite happily does.
 	negatives, err := s.db.QueryContext(ctx,
-		`SELECT user_id, SUM(amount_sat) AS balance FROM ledger_entries
+		`SELECT user_id, SUM(amount_sat) FROM ledger_entries
 		 WHERE account = ? AND user_id IS NOT NULL
-		 GROUP BY user_id HAVING balance < 0`, AccountUserCash)
+		 GROUP BY user_id HAVING SUM(amount_sat) < 0`, AccountUserCash)
 	if err != nil {
 		return nil, fmt.Errorf("store: check balances: %w", err)
 	}

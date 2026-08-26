@@ -4,7 +4,6 @@ package betting
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -210,7 +209,7 @@ func (s *Service) Place(ctx context.Context, user store.User, slip Slip) (Placed
 	}
 
 	var placed Placed
-	err := s.store.Tx(ctx, func(tx *sql.Tx) error {
+	err := s.store.Tx(ctx, func(tx *store.Tx) error {
 		seenEvents := make(map[int64]bool, len(slip.Legs))
 		seenSelections := make(map[int64]bool, len(slip.Legs))
 		odds := make([]int64, 0, len(slip.Legs))

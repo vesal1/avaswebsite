@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,7 +11,7 @@ func testStore(t *testing.T) *Store {
 	t.Helper()
 	// A file in the test's temp dir rather than :memory:, so each test gets a
 	// genuinely isolated database.
-	s, err := Open(filepath.Join(t.TempDir(), "test.sqlite3"))
+	s, err := OpenAndMigrate(filepath.Join(t.TempDir(), "test.sqlite3"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -34,7 +33,7 @@ func makeUser(t *testing.T, s *Store, email string) int64 {
 
 func TestSchemaApplies(t *testing.T) {
 	s := testStore(t)
-	if err := s.db.Ping(); err != nil {
+	if err := s.db.PingContext(context.Background()); err != nil {
 		t.Fatalf("ping: %v", err)
 	}
 }
@@ -56,7 +55,7 @@ func TestLedgerRejectsUnbalancedTransaction(t *testing.T) {
 	ctx := context.Background()
 	userID := makeUser(t, s, "a@example.com")
 
-	err := s.Tx(ctx, func(tx *sql.Tx) error {
+	err := s.Tx(ctx, func(tx *Tx) error {
 		_, err := PostTxn(ctx, tx, Timestamp(s.Now()), TxnSpec{
 			Kind: TxnDeposit,
 			Entries: []Entry{
@@ -82,7 +81,7 @@ func TestLedgerRejectsUnbalancedTransaction(t *testing.T) {
 func TestLedgerRejectsUnattributedUserCash(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	err := s.Tx(ctx, func(tx *sql.Tx) error {
+	err := s.Tx(ctx, func(tx *Tx) error {
 		_, err := PostTxn(ctx, tx, Timestamp(s.Now()), TxnSpec{
 			Kind: TxnDeposit,
 			Entries: []Entry{
@@ -104,7 +103,7 @@ func TestBalanceIsDerivedFromTheLedger(t *testing.T) {
 
 	post := func(amount int64, kind string) {
 		t.Helper()
-		if err := s.Tx(ctx, func(tx *sql.Tx) error {
+		if err := s.Tx(ctx, func(tx *Tx) error {
 			_, err := PostTxn(ctx, tx, Timestamp(s.Now()), TxnSpec{
 				Kind: kind,
 				Entries: []Entry{
@@ -144,7 +143,7 @@ func TestCheckLedgerSpotsNegativeBalance(t *testing.T) {
 
 	// Posting a balanced but overdrawing transaction: the ledger stays balanced
 	// overall, so only the per-user check can catch it.
-	if err := s.Tx(ctx, func(tx *sql.Tx) error {
+	if err := s.Tx(ctx, func(tx *Tx) error {
 		_, err := PostTxn(ctx, tx, Timestamp(s.Now()), TxnSpec{
 			Kind: TxnAdjustment,
 			Entries: []Entry{
@@ -180,7 +179,7 @@ func TestDepositCannotBeCreditedTwice(t *testing.T) {
 	}
 
 	credit := func() error {
-		return s.Tx(ctx, func(tx *sql.Tx) error {
+		return s.Tx(ctx, func(tx *Tx) error {
 			at := Timestamp(s.Now())
 			txnID, err := PostTxn(ctx, tx, at, TxnSpec{
 				Kind: TxnDeposit, RefType: "deposit", RefID: depositID,

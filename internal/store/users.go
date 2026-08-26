@@ -9,6 +9,17 @@ import (
 	"time"
 )
 
+// NormaliseEmail folds an address to the canonical form the database stores.
+//
+// Email addresses are case-insensitive in practice, so they are lower-cased
+// once here rather than relying on a collation. SQLite could do it with
+// COLLATE NOCASE and PostgreSQL could do it with a functional index, but
+// having the two databases enforce identity by different mechanisms is how
+// they end up disagreeing about whether two accounts are the same person.
+func NormaliseEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 // NewUser is the data required to open an account.
 type NewUser struct {
 	Email        string
@@ -25,10 +36,10 @@ func (s *Store) CreateUser(ctx context.Context, in NewUser) (int64, error) {
 	if role == "" {
 		role = RoleCustomer
 	}
-	res, err := s.db.ExecContext(ctx,
+	id, err := s.db.InsertID(ctx,
 		`INSERT INTO users (email, password_hash, display_name, date_of_birth, country, role, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		strings.TrimSpace(in.Email), in.PasswordHash, in.DisplayName, in.DateOfBirth,
+		NormaliseEmail(in.Email), in.PasswordHash, in.DisplayName, in.DateOfBirth,
 		strings.ToUpper(in.Country), role, Timestamp(s.Now()))
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -36,7 +47,7 @@ func (s *Store) CreateUser(ctx context.Context, in NewUser) (int64, error) {
 		}
 		return 0, fmt.Errorf("store: create user: %w", err)
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 const userColumns = `id, email, password_hash, display_name, date_of_birth, country,
@@ -70,7 +81,7 @@ func (s *Store) GetUser(ctx context.Context, id int64) (User, error) {
 // GetUserByEmail loads an account by email, case-insensitively.
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	return scanUser(s.db.QueryRowContext(ctx,
-		`SELECT `+userColumns+` FROM users WHERE email = ?`, strings.TrimSpace(email)))
+		`SELECT `+userColumns+` FROM users WHERE email = ?`, NormaliseEmail(email)))
 }
 
 // ListUsers returns accounts for the back office, newest first.
@@ -223,7 +234,7 @@ func (s *Store) RecordLoginAttempt(ctx context.Context, email, ip string, succee
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO login_attempts (email, ip, succeeded, at) VALUES (?, ?, ?, ?)`,
-		email, ip, flag, Timestamp(s.Now()))
+		NormaliseEmail(email), ip, flag, Timestamp(s.Now()))
 	return err
 }
 
@@ -232,7 +243,7 @@ func (s *Store) FailedLoginsSince(ctx context.Context, email string, since time.
 	var count int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM login_attempts WHERE email = ? AND succeeded = 0 AND at >= ?`,
-		email, Timestamp(since)).Scan(&count)
+		NormaliseEmail(email), Timestamp(since)).Scan(&count)
 	return count, err
 }
 

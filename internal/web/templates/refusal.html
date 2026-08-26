@@ -1,0 +1,26 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>{{.Title}}</h1></div>
+    <div class="panel-body stack">
+      <div class="notice warn">{{.Data.Refusal.Message}}</div>
+      {{if eq (print .Data.Refusal.Code) "kyc_required"}}
+        <p>You can start identity verification from your account page.</p>
+        <a class="button" href="/account">Go to my account</a>
+      {{else if eq (print .Data.Refusal.Code) "geo_blocked"}}
+        <p>
+          We are only licensed to accept bets from certain countries. This is a
+          legal restriction and not something support can lift.
+        </p>
+      {{else if eq (print .Data.Refusal.Code) "self_excluded"}}
+        <p>
+          You can still reach your <a href="/wallet">wallet</a> to withdraw any
+          remaining balance. If you need support, organisations such as
+          GamCare and Gamblers Anonymous offer free, confidential help.
+        </p>
+      {{else}}
+        <p>If you think this is wrong, contact <a href="mailto:{{.Support}}">{{.Support}}</a>.</p>
+      {{end}}
+      <a class="button secondary" href="/">Back to the sportsbook</a>
+    </div>
+  </section>
+{{end}}

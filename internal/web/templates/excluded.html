@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="auth-page">
+  <section class="panel">
+    <div class="panel-head"><h1>You are now self-excluded</h1></div>
+    <div class="panel-body stack">
+      {{if .Data.Permanent}}
+        <p>Your account is permanently self-excluded. This cannot be reversed.</p>
+      {{else}}
+        <p>Your account is self-excluded for {{.Data.Duration}}. This cannot be reversed early.</p>
+      {{end}}
+      <p class="muted">
+        You can still sign in to withdraw any remaining balance from your wallet.
+        You will not be able to place bets.
+      </p>
+      <p class="muted">
+        Free, confidential support is available from organisations such as
+        GamCare, Gambling Therapy and Gamblers Anonymous. If gambling has caused
+        you financial difficulty, a free debt advice service can help too.
+      </p>
+      <a class="button secondary" href="/">Back to the home page</a>
+    </div>
+  </section>
+</div>
+{{end}}

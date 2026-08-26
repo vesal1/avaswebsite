@@ -1,0 +1,31 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head"><h1>Compliance flags</h1></div>
+    {{if .Data.Flags}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Raised</th><th>Account</th><th>Kind</th><th>Severity</th><th>Detail</th><th>Resolve</th></tr></thead>
+          <tbody>
+            {{range .Data.Flags}}
+              <tr>
+                <td class="small">{{datetime .RaisedAt}}</td>
+                <td>{{.UserID}}</td>
+                <td>{{title .Kind}}</td>
+                <td><span class="tag {{statusTag .Severity}}">{{title .Severity}}</span></td>
+                <td class="muted small">{{.Detail}}</td>
+                <td>
+                  <form method="post" action="/admin/flags/{{.ID}}/resolve" class="field-row" style="gap:6px">
+                    <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                    <input type="text" name="resolution" placeholder="What you did" style="width:200px">
+                    <button class="secondary" type="submit">Close</button>
+                  </form>
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">No open flags.</p>{{end}}
+  </section>
+{{end}}

@@ -1,0 +1,70 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head"><h1>Withdrawals</h1></div>
+    <div class="panel-body">
+      <div class="notice info">
+        Releasing a payout is irreversible. If a release fails, do not retry it
+        until you have confirmed on-chain whether the transaction was broadcast:
+        a failed send may still have gone out.
+      </div>
+    </div>
+    {{if .Data.Pending}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Requested</th><th>Account</th><th>Address</th><th class="num">Amount</th>
+                <th class="num">Fee</th><th>Status</th><th>Decision</th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Pending}}
+              <tr>
+                <td class="small">{{datetime .RequestedAt}}</td>
+                <td>{{.UserID}}</td>
+                <td class="small" style="word-break:break-all">{{.Address}}</td>
+                <td class="num">{{btc .AmountSat}}</td>
+                <td class="num">{{btc .FeeSat}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+                <td>
+                  <form method="post" action="/admin/withdrawals/{{.ID}}/release" style="margin-bottom:6px"
+                        data-confirm="Release this payout? Bitcoin transactions cannot be reversed.">
+                    <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                    <button type="submit">Release</button>
+                  </form>
+                  <form method="post" action="/admin/withdrawals/{{.ID}}/reject" class="field-row" style="gap:6px">
+                    <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                    <input type="text" name="reason" placeholder="Reason" style="width:150px">
+                    <button class="secondary" type="submit">Reject</button>
+                  </form>
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">Nothing waiting for a decision.</p>{{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Recently decided</h2></div>
+    {{if .Data.Recent}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Requested</th><th>Account</th><th class="num">Amount</th><th>Status</th><th>Transaction</th><th>Reason</th></tr></thead>
+          <tbody>
+            {{range .Data.Recent}}
+              <tr>
+                <td class="small">{{datetime .RequestedAt}}</td>
+                <td>{{.UserID}}</td>
+                <td class="num">{{btc .AmountSat}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+                <td class="small" style="word-break:break-all">{{.TxID}}</td>
+                <td class="muted small">{{.Reason}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">Nothing yet.</p>{{end}}
+  </section>
+{{end}}

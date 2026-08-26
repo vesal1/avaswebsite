@@ -1,0 +1,63 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>My bets</h1>
+      <div class="chips">
+        <a class="chip" href="/bets" {{if not .Data.Filter}}aria-current="true"{{end}}>All</a>
+        <a class="chip" href="/bets?status=open" {{if eq .Data.Filter "open"}}aria-current="true"{{end}}>Open</a>
+        <a class="chip" href="/bets?status=settled" {{if eq .Data.Filter "settled"}}aria-current="true"{{end}}>Settled</a>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Total staked</div><div class="value">{{btc .Data.Staked}}</div></div>
+        <div class="stat"><div class="label">Returned</div><div class="value">{{btc .Data.Returned}}</div></div>
+        <div class="stat"><div class="label">Net</div><div class="value">{{btc .Data.Net}}</div></div>
+        <div class="stat"><div class="label">Staked on open bets</div><div class="value">{{btc .Data.OpenStake}}</div></div>
+      </div>
+    </div>
+  </section>
+
+  {{if .Data.Bets}}
+    {{range .Data.Bets}}
+      <section class="panel">
+        <div class="panel-head">
+          <h3>Bet {{.ID}} · {{title .Kind}}</h3>
+          <span class="tag {{statusTag .Status}}">{{title .Status}}</span>
+        </div>
+        {{range .Legs}}
+          <div class="slip-leg">
+            <div class="desc">
+              <strong>{{.SelectionName}}</strong>
+              <span>{{.MarketTitle}} · {{.EventName}} · {{sportName .SportKey}} · {{kickoff .StartsAt}}</span>
+            </div>
+            <div class="odds">{{oddsAs .OddsMilli $ctx.OddsFormat}}</div>
+            <span class="tag {{statusTag .Status}}">{{title .Status}}</span>
+          </div>
+        {{end}}
+        <div class="panel-body">
+          <div class="stat-grid">
+            <div class="stat"><div class="label">Stake</div><div class="value">{{btc .StakeSat}}</div></div>
+            <div class="stat"><div class="label">Price</div><div class="value">{{oddsAs .OddsMilli $ctx.OddsFormat}}</div></div>
+            <div class="stat">
+              <div class="label">{{if eq .Status "open"}}Potential return{{else}}Returned{{end}}</div>
+              <div class="value">{{if eq .Status "open"}}{{btc .PotentialPayoutSat}}{{else}}{{btc .PayoutSat}}{{end}}</div>
+            </div>
+            <div class="stat"><div class="label">Placed</div><div class="value small">{{datetime .PlacedAt}}</div></div>
+          </div>
+          {{if eq .Status "half_lost"}}
+            <p class="hint">
+              Part of this stake was returned: one leg landed on an Asian
+              handicap line that split the bet.
+            </p>
+          {{end}}
+        </div>
+      </section>
+    {{end}}
+  {{else}}
+    <section class="panel">
+      <p class="empty">No bets yet. <a href="/sports">Find a market</a>.</p>
+    </section>
+  {{end}}
+{{end}}

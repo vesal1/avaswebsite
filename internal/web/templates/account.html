@@ -1,0 +1,192 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head"><h1>My account</h1></div>
+    <div class="panel-body">
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Balance</div><div class="value">{{btc .BalanceSat}}</div></div>
+        <div class="stat"><div class="label">Open bets</div><div class="value">{{.Data.OpenBets}}</div></div>
+        <div class="stat">
+          <div class="label">Identity</div>
+          <div class="value"><span class="tag {{statusTag .User.KYCStatus}}">{{title .User.KYCStatus}}</span></div>
+        </div>
+        <div class="stat"><div class="label">Country</div><div class="value">{{.User.Country}}</div></div>
+      </div>
+    </div>
+  </section>
+
+  {{if .Data.Excluded}}
+    <div class="notice warn">
+      This account is currently excluded from betting.
+      You can still withdraw your balance from the <a href="/wallet">wallet page</a>.
+    </div>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Identity verification</h2></div>
+    <div class="panel-body stack">
+      <p class="muted">
+        We are required to verify who you are before paying out. Documents are
+        held by our verification provider; we store only the reference, never
+        the document itself.
+      </p>
+      <form method="post" action="/account/verify" class="field-row">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field">
+          <label for="kind">Document</label>
+          <select id="kind" name="kind">
+            <option value="identity">Photo ID</option>
+            <option value="address">Proof of address</option>
+            <option value="source_of_funds">Source of funds</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="reference">Provider reference</label>
+          <input type="text" id="reference" name="reference" required placeholder="e.g. VER-8F21C4">
+        </div>
+        <div class="field" style="flex:0 0 auto; align-self:end">
+          <button type="submit">Submit</button>
+        </div>
+      </form>
+      {{if .Data.Documents}}
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Document</th><th>Reference</th><th>Submitted</th><th>Status</th></tr></thead>
+            <tbody>
+              {{range .Data.Documents}}
+                <tr>
+                  <td>{{title .Kind}}</td>
+                  <td class="small">{{.Reference}}</td>
+                  <td class="small">{{datetime .SubmittedAt}}</td>
+                  <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span>
+                      {{if .Note}}<div class="muted small">{{.Note}}</div>{{end}}</td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Your limits</h2></div>
+    <div class="panel-body">
+      <div class="notice info">
+        Tightening a limit applies straight away. Raising or removing one takes
+        {{.Data.CoolOff}} to come into effect, and your current limit keeps
+        applying until then.
+      </div>
+      {{range .Data.Limits}}
+        <form method="post" action="/account/limits" class="field-row" style="align-items:end">
+          <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+          <input type="hidden" name="kind" value="{{.Kind}}">
+          <div class="field">
+            <label>{{.Label}}</label>
+            <input type="text" name="amount" inputmode="decimal"
+                   value="{{if .HasCurrent}}{{btc .Current}}{{end}}" placeholder="No limit set">
+            <p class="hint">
+              {{.Help}}
+              {{if .HasPending}}
+                <br><strong>Pending:</strong> {{btc .Pending}} BTC from {{datetime .PendingFrom}}.
+              {{end}}
+            </p>
+          </div>
+          <div class="field" style="flex:0 0 auto"><button class="secondary" type="submit">Save</button></div>
+        </form>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Take a break</h2></div>
+    <div class="panel-body stack">
+      <p class="muted">
+        A break signs you out and blocks betting for the period you choose. You
+        can still withdraw your balance while on a break.
+      </p>
+      <form method="post" action="/account/break" class="field-row" style="align-items:end"
+            data-confirm="This will sign you out and block betting for the chosen period. Continue?">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field">
+          <label for="break-duration">How long</label>
+          <select id="break-duration" name="duration">
+            <option value="24h">24 hours</option>
+            <option value="7d">7 days</option>
+            <option value="30d">30 days</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0 0 auto"><button class="secondary" type="submit">Start break</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Self-exclusion</h2></div>
+    <div class="panel-body stack">
+      <div class="notice bad">
+        Self-exclusion cannot be undone, not by you and not by our support team.
+        Choose it only if you want to stop for good, or for a long fixed period.
+        You will still be able to withdraw any remaining balance.
+      </div>
+      <form method="post" action="/account/self-exclude" class="stack"
+            data-confirm="Self-exclusion is permanent for the period you chose and cannot be reversed. Are you sure?">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field-row" style="align-items:end">
+          <div class="field">
+            <label for="exclude-duration">Period</label>
+            <select id="exclude-duration" name="duration">
+              <option value="6m">6 months</option>
+              <option value="1y">1 year</option>
+              <option value="5y">5 years</option>
+              <option value="permanent">Permanently</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="confirm">Type SELF-EXCLUDE to confirm</label>
+            <input type="text" id="confirm" name="confirm" placeholder="SELF-EXCLUDE">
+          </div>
+          <div class="field" style="flex:0 0 auto"><button class="danger" type="submit">Self-exclude</button></div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Preferences</h2></div>
+    <div class="panel-body">
+      <form method="post" action="/account/odds-format" class="field-row" style="align-items:end">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field">
+          <label for="format">Odds format</label>
+          <select id="format" name="format">
+            {{range .Data.Formats}}
+              <option value="{{.}}" {{if eq . $ctx.User.OddsFormat}}selected{{end}}>{{title .}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="field" style="flex:0 0 auto"><button class="secondary" type="submit">Save</button></div>
+      </form>
+    </div>
+  </section>
+
+  {{if .Data.History}}
+  <section class="panel">
+    <div class="panel-head"><h2>Recent account activity</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>When</th><th>Action</th><th>Detail</th></tr></thead>
+        <tbody>
+          {{range .Data.History}}
+            <tr>
+              <td class="small">{{datetime .At}}</td>
+              <td>{{title .Action}}</td>
+              <td class="muted small">{{.Detail}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+{{end}}

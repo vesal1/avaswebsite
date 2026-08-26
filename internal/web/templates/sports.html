@@ -1,0 +1,47 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>All sports</h1>
+      <span class="muted small">{{.Data.Total}} sports</span>
+    </div>
+    <div class="panel-body">
+      <form method="get" action="/sports" class="field-row">
+        <div class="field">
+          <label for="q">Search a sport or competition</label>
+          <input type="search" id="q" name="q" value="{{.Data.Query}}"
+                 placeholder="Premier League, snooker, biathlon…">
+        </div>
+        <div class="field" style="flex:0 0 auto; align-self:end">
+          <button type="submit">Search</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  {{if .Data.Query}}
+    <section class="panel">
+      <div class="panel-head"><h2>{{len .Data.Results}} results for “{{.Data.Query}}”</h2></div>
+      {{if .Data.Results}}
+        <div class="panel-body chips">
+          {{range .Data.Results}}<a class="chip" href="/sports/{{.Key}}">{{.Name}}</a>{{end}}
+        </div>
+      {{else}}
+        <p class="empty">Nothing matched. Try a shorter search.</p>
+      {{end}}
+    </section>
+  {{end}}
+
+  {{$counts := .Data.Counts}}
+  {{range .Data.Groups}}
+    <section class="panel" id="{{.Category}}">
+      <div class="panel-head"><h2>{{.Category}}</h2><span class="muted small">{{len .Sports}} sports</span></div>
+      <div class="panel-body chips">
+        {{range .Sports}}
+          <a class="chip" href="/sports/{{.Key}}">
+            {{.Name}}{{with index $counts .Key}} <span class="count">{{.}}</span>{{end}}
+          </a>
+        {{end}}
+      </div>
+    </section>
+  {{end}}
+{{end}}

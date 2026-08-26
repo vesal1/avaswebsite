@@ -1,0 +1,48 @@
+{{/* A single price button. Expects a dict with Selection, Market, Event,
+     OnSlip, Open and OddsFormat. */}}
+{{define "price"}}
+  {{$open := and .Open (eq .Selection.Status "open") (eq .Market.Status "open")}}
+  <form method="post" action="/betslip/add">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="selection" value="{{.Selection.ID}}">
+    <input type="hidden" name="odds" value="{{.Selection.OddsMilli}}">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <button class="price{{if index .OnSlip .Selection.ID}} on-slip{{end}}"
+            type="submit" {{if not $open}}disabled{{end}}
+            title="{{.Selection.Name}}">
+      <span class="label">{{.Selection.Name}}</span>
+      <span class="value">{{oddsAs .Selection.OddsMilli .OddsFormat}}</span>
+    </button>
+  </form>
+{{end}}
+
+{{/* One event listing row. Expects a dict with Card, OnSlip, CSRF,
+     OddsFormat and Next. */}}
+{{define "event-row"}}
+  <div class="event-row">
+    <div class="event-meta">
+      <a class="name" href="/events/{{.Card.Event.ID}}">{{.Card.Event.Name}}</a>
+      <div class="sub">
+        <span>{{.Card.Sport.Name}}</span>
+        {{if .Card.Event.Competition}}<span>{{.Card.Event.Competition}}</span>{{end}}
+        <span>{{kickoff .Card.Event.StartsAt}}</span>
+        {{if eq .Card.Event.Status "live"}}<span class="tag live">Live</span>{{end}}
+        {{if gt .Card.MarketCount 1}}
+          <a href="/events/{{.Card.Event.ID}}">{{.Card.MarketCount}} markets</a>
+        {{end}}
+      </div>
+    </div>
+    <div class="price-row">
+      {{if .Card.HasMarkets}}
+        {{$ctx := .}}
+        {{range .Card.Headline.Selections}}
+          {{template "price" dict "Selection" . "Market" $ctx.Card.Headline
+              "Open" $ctx.Card.Open "OnSlip" $ctx.OnSlip
+              "CSRF" $ctx.CSRF "OddsFormat" $ctx.OddsFormat "Next" $ctx.Next}}
+        {{end}}
+      {{else}}
+        <span class="muted small">No prices yet</span>
+      {{end}}
+    </div>
+  </div>
+{{end}}

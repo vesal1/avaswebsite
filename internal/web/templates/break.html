@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="auth-page">
+  <section class="panel">
+    <div class="panel-head"><h1>Your break has started</h1></div>
+    <div class="panel-body stack">
+      <p>You have been signed out and will not be able to bet for {{.Data.Duration}}.</p>
+      <p class="muted">
+        You can still sign in to withdraw your balance. If you want to stop for
+        longer, self-exclusion is available from your account page when your
+        break ends.
+      </p>
+      <p class="muted">
+        Free, confidential support is available from organisations such as
+        GamCare, Gambling Therapy and Gamblers Anonymous.
+      </p>
+      <a class="button secondary" href="/">Back to the home page</a>
+    </div>
+  </section>
+</div>
+{{end}}

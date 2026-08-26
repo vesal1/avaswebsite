@@ -1,0 +1,85 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Title}}{{.Title}} · {{end}}{{.Brand}}</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="brand" href="/">{{.Brand}}</a>
+    <nav>
+      <a href="/sports">Sports</a>
+      <a href="/betslip">Bet slip{{if .SlipCount}} ({{.SlipCount}}){{end}}</a>
+      {{if .User}}<a href="/bets">My bets</a>{{end}}
+      <a href="/rules">Rules</a>
+      <a href="/responsible-gambling">Safer gambling</a>
+      {{if and .User .User.IsStaff}}<a href="/admin">Back office</a>{{end}}
+    </nav>
+    <div class="masthead-account">
+      {{if .User}}
+        <span class="balance">Balance <strong>{{btc .BalanceSat}} BTC</strong></span>
+        <a class="button secondary" href="/wallet">Wallet</a>
+        <a class="button secondary" href="/account">Account</a>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button class="secondary" type="submit">Sign out</button>
+        </form>
+      {{else}}
+        <a class="button secondary" href="/login">Sign in</a>
+        <a class="button" href="/register">Open account</a>
+      {{end}}
+    </div>
+  </div>
+</header>
+
+<div class="shell{{if .Data.Wide}} wide{{end}}">
+  {{if not .Data.Wide}}
+  <aside class="sidebar">
+    {{range .Nav}}
+      <h3>{{.Category}}</h3>
+      <ul>
+        {{range .Sports}}<li><a href="/sports/{{.Key}}">{{.Name}}</a></li>{{end}}
+      </ul>
+    {{end}}
+  </aside>
+  {{end}}
+
+  <main>
+    {{if .Flash}}<div class="notice good">{{.Flash}}</div>{{end}}
+    {{if .Error}}<div class="notice bad">{{.Error}}</div>{{end}}
+    {{template "content" .}}
+  </main>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <nav>
+      <a href="/rules">Betting rules</a>
+      <a href="/responsible-gambling">Safer gambling</a>
+      <a href="/sports">All sports</a>
+      <a href="mailto:{{.Support}}">Support</a>
+    </nav>
+    <p>
+      <span class="age">18+</span>
+      Gambling can be addictive. Never stake more than you can afford to lose.
+      You can set deposit, loss and stake limits, take a break, or self-exclude
+      at any time from your <a href="/account">account page</a>.
+    </p>
+    <p>{{.Licence}}</p>
+    {{if not .IsProd}}
+    <p class="notice warn">
+      This server is running in development mode. It is not licensed, the
+      bitcoin wallet is a simulation, and no real funds are involved.
+    </p>
+    {{end}}
+  </div>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>{{end}}

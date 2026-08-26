@@ -1,0 +1,66 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>Safer gambling</h1></div>
+    <div class="panel-body stack">
+      <p>
+        Betting should be entertainment you can afford. It is not a way to make
+        money, and it is not a way out of money trouble. The tools below are
+        always available and take effect immediately.
+      </p>
+
+      <h2>Set a limit</h2>
+      <p>
+        You can cap how much you deposit each day, week or month, how much you
+        stake in a day, and how much you can lose in a day or week. Tightening a
+        limit applies at once. Raising one takes 24 hours, and the old limit
+        keeps applying in the meantime, so a limit can never be lifted in the
+        moment it starts to bite.
+      </p>
+      <a class="button secondary" href="/account">Set my limits</a>
+
+      <h2>Take a break</h2>
+      <p>
+        A break of 24 hours, 7 days or 30 days signs you out and stops you
+        betting. You keep access to your wallet, so you can withdraw whatever is
+        left.
+      </p>
+
+      <h2>Self-exclude</h2>
+      <p>
+        Self-exclusion blocks betting for six months, a year, five years or
+        permanently. It cannot be reversed by you or by us. You will still be
+        able to withdraw your balance.
+      </p>
+
+      <h2>Reality checks</h2>
+      <p>
+        Every {{.Data.Config.RealityCheckMin}} minutes of play we interrupt you
+        with how long you have been betting and how much you are up or down.
+      </p>
+
+      <h2>Warning signs</h2>
+      <ul>
+        <li>Betting more than you planned, or more than you can afford to lose.</li>
+        <li>Chasing losses with bigger stakes.</li>
+        <li>Borrowing money to bet, or hiding betting from people close to you.</li>
+        <li>Betting to escape stress or low mood.</li>
+      </ul>
+
+      <h2>Free, confidential help</h2>
+      <p>
+        Support is available whatever your situation, and it is free.
+        GamCare, Gambling Therapy and Gamblers Anonymous all offer confidential
+        advice, and national gambling helplines operate in most jurisdictions.
+        Free debt advice services can help if betting has caused financial
+        difficulty.
+      </p>
+
+      <h2>Under-age gambling</h2>
+      <p>
+        You must be at least {{.Data.Config.MinimumAge}} to hold an account. We
+        verify age at registration and identity before any payout. Accounts found
+        to belong to someone under age are closed and stakes returned.
+      </p>
+    </div>
+  </section>
+{{end}}

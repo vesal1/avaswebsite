@@ -1,0 +1,140 @@
+{{define "content"}}
+  {{$ctx := .}}
+  {{$event := .Data.Event}}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h1>{{$event.Name}}</h1>
+        <div class="muted small">
+          {{.Data.Sport.Name}} · {{datetime $event.StartsAt}} ·
+          <a href="/events/{{$event.ID}}">View as a customer</a>
+        </div>
+      </div>
+      <span class="tag {{statusTag $event.Status}}">{{title $event.Status}}</span>
+    </div>
+    <div class="panel-body">
+      <form method="post" action="/admin/events/{{$event.ID}}/status" class="field-row" style="align-items:end">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field">
+          <label for="status">Move status to</label>
+          <select id="status" name="status">
+            {{range $s := (list "scheduled" "live" "suspended" "finished" "postponed" "cancelled")}}
+              <option value="{{$s}}" {{if eq $s $event.Status}}selected{{end}}>{{title $s}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="field" style="flex:0 0 auto"><button class="secondary" type="submit">Update</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Markets and prices</h2></div>
+    {{range .Data.Markets}}
+      {{$market := .}}
+      <div class="market">
+        <div class="market-head">
+          <h3>{{.Title}} {{if .HasLine}}<span class="muted">{{line .LineX100 .HasLine}}</span>{{end}}</h3>
+          <span class="tag {{statusTag .Status}}">{{title .Status}}</span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Selection</th><th class="num">Price</th><th class="num">Implied</th>
+                  <th class="num">Liability</th><th>Status</th><th>Move price</th></tr>
+            </thead>
+            <tbody>
+              {{range .Selections}}
+                <tr>
+                  <td>{{.Name}}<div class="muted small">{{.OutcomeCode}}</div></td>
+                  <td class="num">{{odds .OddsMilli}}</td>
+                  <td class="num muted">{{pct (impliedBps .OddsMilli)}}</td>
+                  <td class="num">{{btc (index $ctx.Data.Liability .ID)}}</td>
+                  <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+                  <td>
+                    <form method="post" action="/admin/events/{{$event.ID}}/odds" class="field-row" style="gap:6px">
+                      <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                      <input type="hidden" name="selection" value="{{.ID}}">
+                      <input type="text" name="odds" value="{{odds .OddsMilli}}" style="width:90px">
+                      <input type="text" name="reason" placeholder="reason" style="width:130px">
+                      <button class="secondary" type="submit">Move</button>
+                    </form>
+                  </td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted small">Book: {{pct (bookBps .Selections)}} across {{len .Selections}} selections.</p>
+
+        {{if ne .Status "settled"}}
+        <details>
+          <summary class="muted small">Settle or void this market by hand</summary>
+          <div class="stack" style="margin-top:10px">
+            <form method="post" action="/admin/markets/{{.ID}}/settle" class="stack">
+              <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+              <table>
+                <thead><tr><th>Selection</th><th>Won</th><th>Void</th></tr></thead>
+                <tbody>
+                  {{range .Selections}}
+                    <tr>
+                      <td>{{.Name}}</td>
+                      <td><input type="checkbox" name="winner" value="{{.ID}}" style="width:auto"></td>
+                      <td><input type="checkbox" name="void" value="{{.ID}}" style="width:auto"></td>
+                    </tr>
+                  {{end}}
+                </tbody>
+              </table>
+              <p class="hint">Anything not ticked settles as a loser.</p>
+              <button type="submit" data-confirm="Settle this market? Payouts cannot be reversed.">Settle market</button>
+            </form>
+            <form method="post" action="/admin/markets/{{.ID}}/void" class="field-row" style="align-items:end">
+              <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+              <div class="field"><input type="text" name="reason" placeholder="Reason for voiding"></div>
+              <div class="field" style="flex:0 0 auto"><button class="danger" type="submit">Void market</button></div>
+            </form>
+          </div>
+        </details>
+        {{end}}
+      </div>
+    {{else}}
+      <p class="empty">No markets on this event.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Post the result</h2></div>
+    <div class="panel-body">
+      <form method="post" action="/admin/events/{{$event.ID}}/settle" class="stack"
+            data-confirm="Posting a result settles every market it can decide. Payouts cannot be reversed. Continue?">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Competitor</th><th>Score</th><th>Finish position</th><th>Withdrawn</th></tr></thead>
+            <tbody>
+              {{range .Data.Participants}}
+                <tr>
+                  <td>{{.Name}} <span class="muted small">{{title .HomeAway}}</span></td>
+                  <td><input type="number" name="score_{{.ID}}" value="{{if .HasScore}}{{.Score}}{{end}}" style="width:90px"></td>
+                  <td><input type="number" name="position_{{.ID}}" value="{{if .FinishPosition}}{{.FinishPosition}}{{end}}" min="0" style="width:90px"></td>
+                  <td><input type="checkbox" name="withdrawn_{{.ID}}" value="1" style="width:auto" {{if .Withdrawn}}checked{{end}}></td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        <div class="field">
+          <label>
+            <input type="checkbox" name="abandoned" value="1" style="width:auto">
+            The event was abandoned — void every market and return all stakes
+          </label>
+        </div>
+        <button type="submit">Post result and settle</button>
+        <p class="hint">
+          Markets that a score cannot decide, such as first scorer or method of
+          victory, stay open and are listed for grading by hand.
+        </p>
+      </form>
+    </div>
+  </section>
+{{end}}

@@ -1,0 +1,92 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Bet slip</h1>
+      {{if .Data.Quote}}
+        <form method="post" action="/betslip/clear">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button class="secondary" type="submit">Clear slip</button>
+        </form>
+      {{end}}
+    </div>
+
+    {{if .Data.Quote}}
+      {{$quote := .Data.Quote}}
+      {{range $quote.Legs}}
+        <div class="slip-leg">
+          <div class="desc">
+            <strong>{{.SelectionName}}</strong>
+            <span>{{.MarketTitle}} · {{.EventName}} · {{kickoff .StartsAt}}</span>
+          </div>
+          <div class="odds">
+            {{oddsAs .OddsMilli $ctx.OddsFormat}}
+            {{if .Moved}}<div class="tag warn">Price moved</div>{{end}}
+          </div>
+          <form method="post" action="/betslip/remove">
+            <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+            <input type="hidden" name="selection" value="{{.SelectionID}}">
+            <button class="secondary" type="submit" aria-label="Remove">Remove</button>
+          </form>
+        </div>
+      {{end}}
+
+      <div class="panel-body">
+        <form method="post" action="/betslip/place" class="stack">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+          <div class="slip-total">
+            <span>Bet type</span>
+            <span>{{title $quote.Kind}}{{if gt (len $quote.Legs) 1}} ({{len $quote.Legs}} legs){{end}}</span>
+          </div>
+          <div class="slip-total">
+            <span>Combined price</span>
+            <span>{{oddsAs $quote.OddsMilli $ctx.OddsFormat}}</span>
+          </div>
+
+          <div class="field">
+            <label for="stake">Stake (BTC)</label>
+            <input type="text" id="stake" name="stake" value="{{.Data.Stake}}"
+                   inputmode="decimal" placeholder="0.00050000" data-stake required>
+            <p class="hint">
+              Minimum {{btc .Data.MinStake}} BTC, maximum {{btc .Data.MaxStake}} BTC.
+              Your balance is {{btc .BalanceSat}} BTC.
+            </p>
+          </div>
+
+          <div class="slip-total big">
+            <span>Potential return</span>
+            <span class="value" data-returns data-odds="{{$quote.OddsMilli}}">
+              {{if $quote.PotentialPayoutSat}}{{btc $quote.PotentialPayoutSat}} BTC{{else}}—{{end}}
+            </span>
+          </div>
+
+          {{if $quote.PriceMoved}}
+            <div class="notice warn">
+              One or more prices have changed since you added them. Tick below to
+              accept the current prices, or remove the selection.
+            </div>
+          {{end}}
+          <div class="field">
+            <label>
+              <input type="checkbox" name="accept_odds" value="1" style="width:auto"
+                     {{if $quote.PriceMoved}}checked{{end}}>
+              Accept price changes and place at the live price
+            </label>
+          </div>
+
+          <button type="submit">Place bet</button>
+          <p class="hint">
+            Maximum payout per bet is {{btc .Data.MaxPayout}} BTC. Bets cannot be
+            cancelled once placed.
+          </p>
+        </form>
+      </div>
+    {{else}}
+      <p class="empty">
+        Your bet slip is empty. Pick a price from any
+        <a href="/sports">sport</a> to add it.
+      </p>
+    {{end}}
+  </section>
+{{end}}

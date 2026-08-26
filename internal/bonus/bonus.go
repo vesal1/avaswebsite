@@ -256,12 +256,17 @@ func bonusMemo(kind, note string) string {
 // The rates are published on the promotions page, not hidden in terms.
 func ContributionRateBps(source string) int64 {
 	switch source {
-	case "slots", "casino":
+	case "slots", "casino", "mines":
 		return 10_000 // 100%
 	case "sportsbook":
 		return 5_000 // 50%
 	case "poker":
 		return 2_000 // 20%
+	case "blackjack":
+		// A 99.9% game clears a wagering requirement nearly for free, which
+		// is why every bonus abuser heads straight for the tables. It counts
+		// a tenth, and the offer terms say so.
+		return 1_000 // 10%
 	default:
 		return 5_000
 	}

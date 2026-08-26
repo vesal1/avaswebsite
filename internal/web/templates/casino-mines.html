@@ -1,0 +1,128 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Mines</h1>
+      <div class="chips">
+        <span class="chip">Every step pays 97%</span>
+        <span class="chip">Your call when to stop</span>
+        <a class="chip" href="/casino">All games</a>
+      </div>
+    </div>
+    <div class="panel-body">
+      <p class="muted">
+        Twenty-five tiles, a mine count you choose, and one decision over and
+        over: turn another tile, or take what the board is worth. The mines
+        were placed by the committed seed before your first tap. And a straight
+        word about what this game is: every cash-out point returns the same
+        published 97%, so there is no clever moment to stop — the choice is
+        how much swing you want. Sites that imply a system here are lying to
+        you; we print the ladder instead.
+      </p>
+    </div>
+  </section>
+
+  {{if .User}}
+    <div class="arcade" id="mines" data-csrf="{{.CSRF}}" data-ladders="{{.Data.LaddersJSON}}">
+      <div class="arcade-marquee">
+        <h2>Mines</h2>
+        <div class="arcade-lights"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="arcade-stage">
+        <div class="mines-layout">
+          <div class="mines-grid" id="mines-grid"></div>
+          <div class="mines-side">
+            <form id="mines-setup">
+              <div class="arcade-controls">
+                <label>Mines
+                  <select id="mines-count">
+                    {{range .Data.MineOptions}}<option value="{{.}}">{{.}} mines</option>{{end}}
+                  </select>
+                </label>
+                <label>Stake
+                  <select id="mines-stake">
+                    {{range .Data.StakeLevels}}<option value="{{btc .}}">{{btc .}} BTC</option>{{end}}
+                  </select>
+                </label>
+              </div>
+              <p></p>
+              <button type="submit" id="mines-start" class="btn-arcade">Start</button>
+            </form>
+            <button type="button" id="mines-cashout" class="btn-arcade green" hidden>Cash out</button>
+            <ol class="ladder" id="mines-ladder"></ol>
+          </div>
+        </div>
+        <div class="arcade-readout">
+          <span class="message" id="mines-message">Pick your mines and stake.</span>
+          <span id="mines-win" class="win-line"></span>
+        </div>
+        <span class="arcade-balance">Balance <strong id="mines-balance">{{btc .BalanceSat}}</strong> BTC</span>
+        <div id="mines-banner"></div>
+        <noscript>
+          <p class="notice warn">The board needs JavaScript. Your rounds stay
+          recorded and checkable from <a href="/casino/history">your history</a>.</p>
+        </noscript>
+      </div>
+    </div>
+    <script src="/static/mines.js"></script>
+  {{else}}
+    <section class="panel"><div class="panel-body">
+      <p class="notice warn"><a href="/login">Sign in</a> or
+      <a href="/register">open an account</a> to play. The ladder and the maths
+      below are the same either way.</p>
+    </div></section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>The ladders, printed</h2></div>
+    <div class="panel-body stack">
+      <p class="muted small">
+        The multiplier after each safe reveal is exactly 97% of the true odds
+        of surviving that many tiles, floored to four decimal places. The
+        published return for each board is its worst step after that floor —
+        never more than a tenth of a percent under 97%. A run that reaches
+        {{payX10000 .Data.CapX10000}} settles by itself: that is the top of
+        every ladder, and it is a cap on our exposure, not a shave on your
+        steps.
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Board</th><th>Worst step returns</th><th class="small">Ladder</th></tr></thead>
+          <tbody>
+            {{range .Data.MineOptions}}
+              {{$count := .}}
+              <tr>
+                <td><strong>{{$count}} mines</strong></td>
+                <td>{{pct (index $.Data.WorstRTP $count)}}</td>
+                <td class="small">
+                  {{range $step, $value := index $.Data.Ladders $count}}
+                    {{if gt $step 0}}<span class="pay">{{$step}}: {{payX10000 $value}}</span>{{end}}
+                  {{end}}
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {{if .User}}{{with .Data.Seed}}
+    <section class="panel">
+      <div class="panel-head"><h2>The seed behind your boards</h2></div>
+      <div class="panel-body stack">
+        <p class="muted">
+          The mine layout is the first cells of a fair shuffle of the board,
+          drawn from the seed pair below and the round's counter. Publish the
+          seed from <a href="/casino/history">your history</a> once a board is
+          settled and you can recompute the layout yourself. While a board is
+          open the pair cannot be published — that would show you the mines.
+        </p>
+        <dl class="facts">
+          <div><dt>Commitment</dt><dd class="mono small">{{.Commitment}}</dd></div>
+          <div><dt>Your seed</dt><dd class="mono small">{{.ClientSeed}}</dd></div>
+          <div><dt>Next round</dt><dd>#{{.NextNonce}}</dd></div>
+        </dl>
+      </div>
+    </section>
+  {{end}}{{end}}
+{{end}}

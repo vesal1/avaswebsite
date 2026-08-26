@@ -605,3 +605,182 @@ func TestPercentHandlesNegatives(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Table games over HTTP
+// ---------------------------------------------------------------------------
+
+func TestTableGamePagesRender(t *testing.T) {
+	ts := newTestServer(t)
+	cookie, _ := ts.player(t, "tables@example.com")
+
+	for _, path := range []string{"/casino/blackjack", "/casino/mines"} {
+		if rec := ts.as(t, cookie, path); rec.Code != http.StatusOK {
+			t.Errorf("GET %s = %d\n%s", path, rec.Code, rec.Body.String())
+		}
+		// A visitor without an account still gets the rules and the maths.
+		if rec := ts.get(t, path, nil); rec.Code != http.StatusOK {
+			t.Errorf("GET %s signed out = %d", path, rec.Code)
+		}
+	}
+	// The strategy card is actually printed on the page.
+	page := ts.as(t, cookie, "/casino/blackjack")
+	if !strings.Contains(page.Body.String(), "strategy-table") {
+		t.Error("the blackjack page must print the strategy card")
+	}
+}
+
+func TestMinesOverHTTP(t *testing.T) {
+	ts := newTestServer(t)
+	cookie, userID := ts.player(t, "digger@example.com")
+	ts.credit(t, userID, 1_000_000)
+	token := extractCSRF(ts.as(t, cookie, "/casino/mines").Body.String())
+
+	start := ts.postAs(t, cookie, "/casino/mines/start", url.Values{
+		"csrf": {token}, "mines": {"3"}, "stake": {"0.00010000"},
+	})
+	if start.Code != http.StatusOK {
+		t.Fatalf("start = %d\n%s", start.Code, start.Body.String())
+	}
+	var view struct {
+		Open    bool  `json:"open"`
+		RoundID int64 `json:"round_id"`
+		Mines   []int `json:"mines"`
+	}
+	if err := json.Unmarshal(start.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if !view.Open {
+		t.Fatal("a fresh board is open")
+	}
+	if view.Mines != nil {
+		t.Fatal("the mine layout leaked to the client while the board is live")
+	}
+
+	// Reveal tiles until something ends the round; the JSON must never show
+	// the layout while it is open.
+	var settled struct {
+		Open   bool   `json:"open"`
+		Status string `json:"status"`
+		WinSat int64  `json:"win_sat"`
+		Mines  []int  `json:"mines"`
+	}
+	for cell := 0; cell < 25; cell++ {
+		rec := ts.postAs(t, cookie, "/casino/mines/reveal", url.Values{
+			"csrf": {token}, "cell": {strconv.Itoa(cell)},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("reveal %d = %d\n%s", cell, rec.Code, rec.Body.String())
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &settled); err != nil {
+			t.Fatal(err)
+		}
+		if settled.Open {
+			continue
+		}
+		break
+	}
+	if settled.Open {
+		t.Fatal("25 reveals and the board never settled")
+	}
+	if len(settled.Mines) == 0 {
+		t.Error("a settled board must show where the mines were")
+	}
+
+	// The round is on the history page and has a detail page.
+	history := ts.as(t, cookie, "/casino/history")
+	if !strings.Contains(history.Body.String(), "/casino/rounds/") {
+		t.Error("the history page must list table rounds")
+	}
+	if rec := ts.as(t, cookie, "/casino/rounds/"+strconv.FormatInt(view.RoundID, 10)); rec.Code != http.StatusOK {
+		t.Errorf("round page = %d", rec.Code)
+	}
+}
+
+func TestBlackjackOverHTTP(t *testing.T) {
+	ts := newTestServer(t)
+	cookie, userID := ts.player(t, "dealerme@example.com")
+	ts.credit(t, userID, 10_000_000)
+	token := extractCSRF(ts.as(t, cookie, "/casino/blackjack").Body.String())
+
+	deal := ts.postAs(t, cookie, "/casino/blackjack/deal", url.Values{
+		"csrf": {token}, "stake": {"0.00010000"},
+	})
+	if deal.Code != http.StatusOK {
+		t.Fatalf("deal = %d\n%s", deal.Code, deal.Body.String())
+	}
+	var view struct {
+		Open   bool `json:"open"`
+		Dealer []struct {
+			Rank string `json:"rank"`
+		} `json:"dealer"`
+		HoleHidden bool   `json:"dealer_hole_hidden"`
+		Advice     string `json:"advice"`
+		Actions    []string
+	}
+	if err := json.Unmarshal(deal.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Open {
+		// The hole card must not reach the client while the hand is live.
+		if len(view.Dealer) != 1 || !view.HoleHidden {
+			t.Errorf("an open hand shows %d dealer cards, hole hidden %v", len(view.Dealer), view.HoleHidden)
+		}
+		if view.Advice == "" {
+			t.Error("an open hand carries the card's advice")
+		}
+		// Stand the hand down to settlement.
+		for i := 0; i < 4; i++ {
+			rec := ts.postAs(t, cookie, "/casino/blackjack/act", url.Values{
+				"csrf": {token}, "action": {"stand"},
+			})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("stand = %d\n%s", rec.Code, rec.Body.String())
+			}
+			var after struct {
+				Open        bool `json:"open"`
+				Dealer      []struct{ Rank string }
+				DealerTotal int `json:"dealer_total"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &after); err != nil {
+				t.Fatal(err)
+			}
+			if !after.Open {
+				if len(after.Dealer) < 2 || after.DealerTotal == 0 {
+					t.Error("a settled hand shows the dealer's full hand and total")
+				}
+				break
+			}
+		}
+	}
+
+	// A nonsense action is refused.
+	if rec := ts.postAs(t, cookie, "/casino/blackjack/act", url.Values{
+		"csrf": {token}, "action": {"surrender"},
+	}); rec.Code != http.StatusBadRequest {
+		t.Errorf("surrender = %d, want 400: this table does not offer it", rec.Code)
+	}
+}
+
+func TestTableActionsNeedCSRF(t *testing.T) {
+	ts := newTestServer(t)
+	cookie, userID := ts.player(t, "forger2@example.com")
+	ts.credit(t, userID, 1_000_000)
+
+	for _, path := range []string{
+		"/casino/mines/start", "/casino/mines/reveal", "/casino/mines/cashout",
+		"/casino/blackjack/deal", "/casino/blackjack/act",
+	} {
+		rec := ts.postAs(t, cookie, path, url.Values{"csrf": {"forged"}})
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("POST %s with a forged token = %d, want 403", path, rec.Code)
+		}
+	}
+	balance, err := ts.store.BalanceSat(context.Background(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance != 1_000_000 {
+		t.Errorf("forged requests moved money: balance %d", balance)
+	}
+}

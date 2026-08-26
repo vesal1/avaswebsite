@@ -14,32 +14,25 @@
   </section>
 
   {{if .User}}
-    <section class="panel machine"
-             data-game="{{$game.Key}}"
-             data-reels="{{$game.ReelCount}}"
-             data-rows="{{$game.Rows}}"
-             data-csrf="{{.CSRF}}">
-      <div class="panel-body">
-        <!-- What each symbol id draws as. The page is handed a finished
-             window of ids by the server; this is only the lookup for
-             drawing it. -->
-        <div class="symbol-legend" hidden aria-hidden="true">
-          {{range $id, $symbol := $game.Symbols}}<span data-symbol-id="{{$id}}">{{$symbol.Glyph}}</span>{{end}}
+    <div class="arcade machine"
+         data-game="{{$game.Key}}"
+         data-reels="{{$game.ReelCount}}"
+         data-rows="{{$game.Rows}}"
+         data-strips="{{.Data.StripsJSON}}"
+         {{if .Data.FreeJSON}}data-freestrips="{{.Data.FreeJSON}}"{{end}}
+         data-glyphs="{{.Data.GlyphsJSON}}"
+         data-csrf="{{.CSRF}}">
+      <div class="arcade-marquee">
+        <h2>{{$game.Name}}</h2>
+        <div class="arcade-lights"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="arcade-stage">
+        <canvas id="slot-canvas" class="slot-canvas" aria-label="The reels"></canvas>
+        <div class="arcade-readout">
+          <span class="message" id="spin-message">Pick a stake and spin.</span>
+          <span id="spin-win" class="win-line"></span>
         </div>
-        <div class="reels" id="reels">
-          {{range $reel := seq $game.ReelCount}}
-            <div class="reel" data-reel="{{$reel}}">
-              {{range $row := seq $game.Rows}}<div class="cell" data-row="{{$row}}"></div>{{end}}
-            </div>
-          {{end}}
-        </div>
-
-        <div class="machine-readout">
-          <div id="spin-message" class="muted">Pick a stake and spin.</div>
-          <div id="spin-win" class="win-line"></div>
-        </div>
-
-        <form class="machine-controls" id="spin-form"
+        <form class="arcade-controls" id="spin-form"
               method="post" action="/casino/{{$game.Key}}/spin">
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           <label>Stake
@@ -47,10 +40,8 @@
               {{range $game.StakeLevels}}<option value="{{btc .}}">{{btc .}} BTC</option>{{end}}
             </select>
           </label>
-          <button type="submit" id="spin-button">Spin</button>
-          <span class="muted small">
-            Balance <strong id="balance">{{btc .BalanceSat}}</strong> BTC
-          </span>
+          <button type="submit" id="spin-button" class="btn-arcade">Spin</button>
+          <span class="arcade-balance">Balance <strong id="balance">{{btc .BalanceSat}}</strong> BTC</span>
         </form>
         <noscript>
           <p class="notice warn">
@@ -60,7 +51,12 @@
           </p>
         </noscript>
       </div>
-    </section>
+      <div class="bigwin" id="bigwin">
+        <span class="headline">BIG WIN</span>
+        <span class="amount"></span>
+      </div>
+    </div>
+    <script src="/static/slots.js"></script>
 
     {{with .Data.Seed}}
       <section class="panel">
@@ -201,12 +197,11 @@
       </dl>
       <p class="muted small">
         The return, its split and the feature figures are exact: they are summed
-        over every outcome the reels can produce. The share of spins that pay
-        something is measured over {{$maths.HitSamples}} simulated spins, because
-        whether a spin pays at all depends on the whole window at once and the
-        exact sum runs to billions of terms.
+        over every outcome the reels can produce. The reels drawn above are the
+        machine's real strips — the spin animation scrolls the same published
+        strip your replay script would, and lands on the stops the server fixed
+        before the reels started turning.
       </p>
     </div>
   </section>
-  <script src="/static/casino.js"></script>
 {{end}}

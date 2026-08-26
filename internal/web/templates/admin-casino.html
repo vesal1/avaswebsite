@@ -62,6 +62,43 @@
     </div>
   </section>
 
+  {{if .Data.TableRows}}
+    <section class="panel">
+      <div class="panel-head"><h2>Table games</h2></div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Game</th><th class="num">Published</th><th class="num">Rounds</th>
+                <th class="num">Players</th><th class="num">Staked</th><th class="num">Returned</th>
+                <th class="num">Actual</th><th class="num">Gap</th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.TableRows}}
+              <tr>
+                <td><a href="/casino/{{.Totals.GameKey}}">{{title .Totals.GameKey}}</a></td>
+                <td class="num">{{pct .PublishedBps}}</td>
+                <td class="num">{{.Totals.Spins}}</td>
+                <td class="num">{{.Totals.Players}}</td>
+                <td class="num">{{btc .Totals.StakeSat}}</td>
+                <td class="num">{{btc .Totals.WinSat}}</td>
+                <td class="num">{{if .Totals.Spins}}{{pct .Totals.ReturnBps}}{{else}}—{{end}}</td>
+                <td class="num">{{if .Totals.Spins}}{{pct .GapBps}}{{else}}—{{end}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      <div class="panel-body">
+        <p class="muted small">
+          Blackjack's published figure assumes the printed strategy card;
+          players who misplay return the house more, and that reads here as a
+          negative gap that is their play, not a fault. Mines' figure is the
+          house factor every ladder step pays.
+        </p>
+      </div>
+    </section>
+  {{end}}
+
   <section class="panel">
     <div class="panel-head"><h2>Biggest single rounds</h2></div>
     {{if .Data.BiggestWins}}

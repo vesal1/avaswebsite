@@ -63,6 +63,31 @@
         implementation, audited once.
       </p>
 
+      <h2>Blackjack</h2>
+      <p>
+        The deck is the same construction: the 52 cards run through a
+        Fisher–Yates shuffle driven by the round's keystream, dealt player,
+        dealer up, player, dealer hole, then off the top in play order. Your
+        decisions are logged with the round, so once the seed is published
+        anybody can replay the shuffle, apply the same plays, and land on the
+        same cards and the same payout. Blackjack is the floor's skill game:
+        the strategy card printed on its page is computed from the table's own
+        rules, and the published return is what that card earns over twenty
+        million simulated rounds of the real engine.
+      </p>
+
+      <h2>Mines</h2>
+      <p>
+        The mine layout is the first cells of a fair shuffle of the 25 tiles,
+        fixed by the committed seed before your first reveal. Every multiplier
+        on the ladder is exactly 97% of the true survival odds for that many
+        tiles, floored to four decimal places, and the published figure for
+        each board is its <em>worst</em> step after that floor. Every cash-out
+        point returns the same rate — the stopping decision changes your
+        variance, never your expectation, and the page says so in as many
+        words.
+      </p>
+
       <h2>The return figures</h2>
       <p>
         Each machine publishes its return to player. That number is computed,

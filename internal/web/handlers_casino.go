@@ -1,38 +1,90 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 
+	"github.com/vesal1/avaswebsite/internal/blackjack"
 	"github.com/vesal1/avaswebsite/internal/casino"
 	"github.com/vesal1/avaswebsite/internal/compliance"
+	"github.com/vesal1/avaswebsite/internal/mines"
 	"github.com/vesal1/avaswebsite/internal/money"
 	"github.com/vesal1/avaswebsite/internal/slots"
 	"github.com/vesal1/avaswebsite/internal/store"
 )
 
-// gameCard is a machine as the lobby shows it: what it costs, what it returns
-// and how it behaves. The return is the computed figure, not a claim.
-type gameCard struct {
-	Game  *slots.Game
-	Maths slots.Maths
+// floorCard is one game on the lobby floor. The badge is the honest label:
+// "skill" only where decisions change the return, "your call" where the
+// decision is real but every choice returns the same rate, "chance" where the
+// seed decides everything.
+type floorCard struct {
+	Href       string
+	Name       string
+	Blurb      string
+	Badge      string
+	BadgeClass string
+	Glyphs     []string
+	Return     string
+	Layout     string
+	MinStake   int64
+	MaxStake   int64
 }
 
 func (s *Server) handleCasinoLobby(w http.ResponseWriter, r *http.Request) {
+	tables := []floorCard{
+		{
+			Href: "/casino/blackjack", Name: "Blackjack",
+			Blurb: "One deck, dealt from a committed shuffle. Your decisions set the return, and the strategy card that maximises it is printed on the page.",
+			Badge: "Skill", BadgeClass: "skill",
+			Glyphs:   []string{"🂡", "🃑", "🂱", "🃁"},
+			Return:   formatPercent(blackjack.PublishedRTPBps) + " with the card",
+			Layout:   "Single deck · stands all 17s · 3:2",
+			MinStake: casino.BlackjackStakeLevels[0],
+			MaxStake: casino.BlackjackStakeLevels[len(casino.BlackjackStakeLevels)-1],
+		},
+		{
+			Href: "/casino/mines", Name: "Mines",
+			Blurb: "Turn tiles, dodge the mines, stop when you like. Every cash-out point pays the same 97% — the printed ladder is the whole game.",
+			Badge: "Your call", BadgeClass: "choice",
+			Glyphs:   []string{"💎", "💣", "💎", "💎"},
+			Return:   "97.00% at every step",
+			Layout:   "5×5 · 3, 5 or 10 mines",
+			MinStake: mines.StakeLevels[0],
+			MaxStake: mines.StakeLevels[len(mines.StakeLevels)-1],
+		},
+	}
+
 	games := s.casino.Games()
-	cards := make([]gameCard, 0, len(games))
+	slotsCards := make([]floorCard, 0, len(games))
 	for _, game := range games {
 		maths, _ := slots.MathsFor(game.Key)
-		cards = append(cards, gameCard{Game: game, Maths: maths})
+		layout := fmt.Sprintf("%d×%d, %d lines", game.ReelCount(), game.Rows, len(game.Lines))
+		if game.Ways {
+			layout = fmt.Sprintf("%d×%d, 1024 ways", game.ReelCount(), game.Rows)
+		}
+		glyphs := []string{}
+		for i, symbol := range game.Symbols {
+			if i < 4 && symbol.Glyph != "" {
+				glyphs = append(glyphs, symbol.Glyph)
+			}
+		}
+		slotsCards = append(slotsCards, floorCard{
+			Href: "/casino/" + game.Key, Name: game.Name, Blurb: game.Blurb,
+			Badge: "Chance", BadgeClass: "chance", Glyphs: glyphs,
+			Return: maths.Percent(), Layout: layout,
+			MinStake: game.MinStakeSat(), MaxStake: game.MaxStakeSat(),
+		})
 	}
 
 	data := map[string]any{
-		"Title": "Casino",
-		"Games": cards,
-		"Flash": r.URL.Query().Get("flash"),
-		"Error": r.URL.Query().Get("error"),
+		"Title":  "Casino",
+		"Tables": tables,
+		"Slots":  slotsCards,
+		"Flash":  r.URL.Query().Get("flash"),
+		"Error":  r.URL.Query().Get("error"),
 	}
 	if user, ok := CurrentUser(r.Context()); ok {
 		if totals, err := s.casino.Totals(r.Context(), user.ID); err == nil {
@@ -49,15 +101,29 @@ func (s *Server) handleCasinoGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	glyphs := make([]string, len(game.Symbols))
+	for i, symbol := range game.Symbols {
+		glyphs[i] = symbol.Glyph
+	}
+	stripsJSON, _ := json.Marshal(game.Reels)
+	glyphsJSON, _ := json.Marshal(glyphs)
+	freeJSON := ""
+	if game.FreeReels != nil {
+		encoded, _ := json.Marshal(game.FreeReels)
+		freeJSON = string(encoded)
+	}
 	data := map[string]any{
-		"Title":    game.Name,
-		"Game":     game,
-		"Maths":    maths,
-		"Paytable": paytableRows(game),
-		"Symbols":  game.Symbols,
-		"Flash":    r.URL.Query().Get("flash"),
-		"Error":    r.URL.Query().Get("error"),
-		"Wide":     true,
+		"Title":      game.Name,
+		"Game":       game,
+		"Maths":      maths,
+		"Paytable":   paytableRows(game),
+		"Symbols":    game.Symbols,
+		"StripsJSON": string(stripsJSON),
+		"FreeJSON":   freeJSON,
+		"GlyphsJSON": string(glyphsJSON),
+		"Flash":      r.URL.Query().Get("flash"),
+		"Error":      r.URL.Query().Get("error"),
+		"Wide":       true,
 	}
 	if user, ok := CurrentUser(r.Context()); ok {
 		seed, err := s.casino.Seed(r.Context(), user.ID)
@@ -195,9 +261,15 @@ func (s *Server) handleCasinoHistory(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
+	rounds, err := s.casino.Rounds(r.Context(), user.ID, 100)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
 	s.render(w, r, http.StatusOK, "casino-history.html", map[string]any{
-		"Title":  "My spins",
+		"Title":  "My casino history",
 		"Spins":  spins,
+		"Rounds": rounds,
 		"Totals": totals,
 		"Seed":   seed,
 		"Flash":  r.URL.Query().Get("flash"),
@@ -311,6 +383,20 @@ func (r floorRow) GapBps() int64 {
 	return r.Totals.ReturnBps() - r.Maths.RTPBps
 }
 
+// tableFloorRow pairs a table game's play with its published figure.
+type tableFloorRow struct {
+	Totals       store.CasinoGameTotals
+	PublishedBps int64
+}
+
+// GapBps mirrors floorRow.GapBps for the table games.
+func (r tableFloorRow) GapBps() int64 {
+	if r.Totals.Spins == 0 || r.PublishedBps == 0 {
+		return 0
+	}
+	return r.Totals.ReturnBps() - r.PublishedBps
+}
+
 func (s *Server) handleAdminCasino(w http.ResponseWriter, r *http.Request) {
 	totals, err := s.store.CasinoTotalsByGame(r.Context())
 	if err != nil {
@@ -332,6 +418,27 @@ func (s *Server) handleAdminCasino(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, row)
 	}
 
+	// The table games, from settled rounds. Their published figures are the
+	// strategy-card return and the ladders' worst step.
+	roundTotals, err := s.store.CasinoRoundTotalsByGame(r.Context())
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	published := map[string]int64{
+		casino.KeyBlackjack: blackjack.PublishedRTPBps,
+		casino.KeyMines:     9_700,
+	}
+	tableRows := make([]tableFloorRow, 0, len(roundTotals))
+	for _, totals := range roundTotals {
+		staked += totals.StakeSat
+		returned += totals.WinSat
+		tableRows = append(tableRows, tableFloorRow{
+			Totals:       totals,
+			PublishedBps: published[totals.GameKey],
+		})
+	}
+
 	wins, err := s.store.BiggestCasinoWins(r.Context(), 20)
 	if err != nil {
 		s.serverError(w, r, err)
@@ -346,6 +453,7 @@ func (s *Server) handleAdminCasino(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "admin-casino.html", map[string]any{
 		"Title":       "Casino floor",
 		"Rows":        rows,
+		"TableRows":   tableRows,
 		"StakedSat":   staked,
 		"ReturnedSat": returned,
 		"HoldSat":     staked - returned,

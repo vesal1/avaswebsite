@@ -144,6 +144,7 @@ func templateFuncs() template.FuncMap {
 		"sportName": sportName,
 		"marketDoc": marketDoc,
 		"add":       func(a, b int) int { return a + b },
+		"mulInt":    func(a, b int) int { return a * b },
 		"sub":       func(a, b int64) int64 { return a - b },
 		"div": func(a, b int64) int64 {
 			if b == 0 {
@@ -166,6 +167,7 @@ func templateFuncs() template.FuncMap {
 			return 1 / p
 		},
 		"payX100":     formatMultiplier,
+		"payX10000":   formatMultiplierX10000,
 		"symbolGlyph": symbolGlyph,
 		"mathsFor": func(key string) slots.Maths {
 			maths, _ := slots.MathsFor(key)
@@ -347,4 +349,16 @@ func formatPercent(bps int64) string {
 		sign, bps = "-", -bps
 	}
 	return fmt.Sprintf("%s%d.%02d%%", sign, bps/100, bps%100)
+}
+
+// formatMultiplierX10000 renders a Mines-style multiplier stored in
+// ten-thousandths: "2.06x", "2231.30x".
+func formatMultiplierX10000(x10000 int64) string {
+	whole := x10000 / 10_000
+	frac := x10000 % 10_000
+	if frac == 0 {
+		return fmt.Sprintf("%dx", whole)
+	}
+	// Two decimals reads best on a ladder; the JSON keeps full precision.
+	return fmt.Sprintf("%d.%02dx", whole, frac/100)
 }

@@ -117,6 +117,8 @@ internal/bonus        promotions, wagering requirements, comps
 internal/treasury     manual cash adjustments with two-person approval
 internal/catalog      the 168 sports and every market kind
 internal/fair         the commit-reveal generator behind every game
+internal/blackjack    single-deck blackjack: engine, DP-derived strategy, RTP
+internal/mines        the Mines board and its exact multiplier ladders
 internal/poker        Texas Hold'em: cards, evaluator, betting, pots
 internal/pokerhouse   live tables, seats, chips, camera and mic signalling
 internal/slots        the slot engine and the machines, with exact RTP maths
@@ -176,7 +178,8 @@ terms, because promotions nobody can understand are how disputes start:
 - Staking draws on the customer's **own cash first**, so a bonus they later
   give up costs them as little as possible. The other order quietly protects
   the house.
-- Contribution rates differ by product (slots 100%, sports 50%, poker 20%) and
+- Contribution rates differ by product (slots and Mines 100%, sports 50%,
+  poker 20%, blackjack 10% — a 99.9% game must not clear a bonus at par) and
   are published. A bonus clearing at full rate on near-even-money bets is a
   promotion to arbitrage, not to play.
 - Stakes below an offer's minimum price do not clear it.
@@ -259,8 +262,59 @@ rake it has taken.
 
 ## The casino
 
+Every game on the floor is labelled with what it actually is. **Skill** means
+the player's decisions change the return and the strategy that maximises it is
+printed on the page. **Your call** means the decisions are real but every
+choice pays the same published rate. **Chance** means the committed seed
+decides everything. The frames are bright, chunky arcade canvases — reels with
+real physics, cards that deal and flip, tiles that pop — and none of it
+touches an outcome: the front end renders rounds the server has already
+settled and recorded.
+
+### Blackjack — the skill game
+
+One deck, freshly shuffled from the committed seed every round. Dealer stands
+on all 17s, blackjack pays 3:2, double on any two cards, split once, dealer
+peeks, no insurance (it returns about 92% dressed up as protection, and the
+house declines to sell it).
+
+The strategy card is computed by dynamic programming from the table's own
+rules — not copied from a book — and printed in full on the game page, with a
+hint quoting it on every hand. The published return, 99.87% of everything
+staked, is measured by playing the real single-deck engine twenty million
+deterministically seeded rounds under that card; the test suite re-runs the
+identical simulation and fails if the constant drifts. The infinite-deck DP
+cross-checks it to within the known single-deck gap.
+
+Rounds are stateful rows in `casino_rounds`: the stake moves when the hand is
+dealt, doubles and splits move their extra stake inside the same transaction
+as the move itself, and a server restart hands the player back their
+half-played hand. The action log is stored with the round, so a settled hand
+replays move for move from the published seed.
+
+### Mines — your call, priced flat
+
+A 5×5 board with 3, 5 or 10 mines placed by the committed seed before the
+first tap. Every multiplier is exactly 97% of the true survival odds, floored
+to four decimals, and the published figure per board is its *worst* step after
+the floor. Every cash-out point returns the same rate — the stopping decision
+buys variance, not expectation, and the page says so in as many words. A run
+that reaches 2,500x settles automatically; that cap bounds the book's exposure
+and is printed at the top of every ladder.
+
+### Seed rotation refuses mid-round
+
+Publishing a seed pair reveals the deck order and the mine layout derived from
+it, so rotation is refused while any round is open on the pair — enforced in
+the store, inside the transaction. Settle the round, then rotate; every round
+taken under the pair becomes checkable at once.
+
+### The slots
+
 Four slot machines, each written down as a par sheet — reel strips, paylines, a
-paytable and a feature set — and run by a single engine.
+paytable and a feature set — and run by a single engine. The canvas machine on
+each game page scrolls the machine's real published strips and lands on the
+stops the server fixed before the reels started turning.
 
 ### The return figure is computed, not claimed
 
@@ -298,9 +352,10 @@ repeats. Rotating the pair publishes the server seed, at which point every spin
 taken under it can be replayed by anybody.
 
 The algorithm is written out on `/casino/fairness` so a suspicious player can
-implement it themselves. It was developed that way: an independent
-reimplementation reproduced 1,021 paid spins and their free spins, reel for
-reel, from the published seeds alone.
+implement it themselves. It was developed that way: independent
+reimplementations reproduced 1,021 paid spins and their free spins reel for
+reel, replayed 45 blackjack hands action by action to the exact payout, and
+recomputed 45 Mines boards, all from the published seeds alone.
 
 The reel stops are drawn with rejection sampling rather than a modulo, because
 folding a byte into a 55-stop strip would over-weight the first 56 stops — a

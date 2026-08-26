@@ -465,98 +465,553 @@ footer .age {
 }
 
 /* ---------------------------------------------------------------------------
-   Casino
+   Casino: the arcade layer
+   ---------------------------------------------------------------------------
+   The game frames. Bright, chunky and springy on purpose — thick rounded
+   tiles with a solid bottom ledge, glossy oversized buttons, bouncy easing.
+   None of it touches an outcome: everything here draws states the server has
+   already settled. */
+
+:root {
+  --arc-bg1: #241a5e;
+  --arc-bg2: #120d33;
+  --arc-panel: #2d2170;
+  --arc-tile: #4636a3;
+  --arc-tile-hi: #6a56d6;
+  --arc-ledge: #1c1450;
+  --arc-gold: #ffcd3c;
+  --arc-gold-dark: #c79417;
+  --arc-green: #35d46a;
+  --arc-green-dark: #1d8f43;
+  --arc-red: #ff5252;
+  --arc-red-dark: #b32424;
+  --arc-blue: #4aa8ff;
+  --arc-ink: #16103a;
+  --arc-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.arcade {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid #43378f;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(122, 92, 255, 0.35), transparent 60%),
+    linear-gradient(165deg, var(--arc-bg1), var(--arc-bg2) 75%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 1.1rem 1.1rem 1.3rem;
+}
+
+.arcade-marquee {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.arcade-marquee h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #fff3c4, var(--arc-gold) 55%, #f0932b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55));
+}
+
+.arcade-lights {
+  display: flex;
+  gap: 0.45rem;
+}
+.arcade-lights span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #7a68d8;
+  box-shadow: 0 0 6px rgba(122, 104, 216, 0.7);
+  animation: arcade-light 1.6s infinite;
+}
+.arcade-lights span:nth-child(2n) { animation-delay: 0.4s; }
+.arcade-lights span:nth-child(3n) { animation-delay: 0.8s; }
+.arcade.celebrating .arcade-lights span {
+  background: var(--arc-gold);
+  box-shadow: 0 0 10px var(--arc-gold);
+  animation-duration: 0.5s;
+}
+@keyframes arcade-light {
+  0%, 100% { opacity: 0.45; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* The play surface itself. */
+.arcade-stage {
+  position: relative;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.slot-canvas { display: block; max-width: 100%; border-radius: 10px; }
+
+.arcade-readout {
+  min-height: 1.6rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+.arcade-readout .message { color: #b9aef2; font-weight: 600; }
+.win-line { font-weight: 900; font-size: 1.1rem; }
+.win-line.good { color: var(--arc-gold); text-shadow: 0 0 12px rgba(255, 205, 60, 0.5); }
+.win-line.bad { color: var(--arc-red); }
+
+.arcade-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  width: 100%;
+}
+.arcade-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9d8fe0;
+}
+.arcade-controls select {
+  background: var(--arc-ink);
+  color: #fff;
+  border: 1px solid #55479f;
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  font-weight: 700;
+}
+
+/* The chunky button family: a solid ledge below, pressed flat on :active. */
+button.btn-arcade, .btn-arcade {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 0.8rem 2rem;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--arc-ink);
+  background: linear-gradient(180deg, #ffe9a3, var(--arc-gold) 60%, #f5b81e);
+  box-shadow: 0 6px 0 var(--arc-gold-dark), 0 10px 18px rgba(0, 0, 0, 0.4);
+  transition: transform 0.12s var(--arc-bounce), box-shadow 0.12s;
+}
+button.btn-arcade:hover, .btn-arcade:hover { transform: translateY(-2px); }
+button.btn-arcade:active, .btn-arcade:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 var(--arc-gold-dark), 0 4px 8px rgba(0, 0, 0, 0.35);
+}
+button.btn-arcade:disabled, .btn-arcade:disabled {
+  filter: saturate(0.35) brightness(0.75);
+  cursor: default;
+  transform: none;
+}
+button.btn-arcade.green, .btn-arcade.green {
+  background: linear-gradient(180deg, #9df2b6, var(--arc-green) 60%, #22b854);
+  box-shadow: 0 6px 0 var(--arc-green-dark), 0 10px 18px rgba(0, 0, 0, 0.4);
+  color: #06331a;
+}
+button.btn-arcade.green:active, .btn-arcade.green:active { box-shadow: 0 2px 0 var(--arc-green-dark), 0 4px 8px rgba(0, 0, 0, 0.35); }
+button.btn-arcade.red, .btn-arcade.red {
+  background: linear-gradient(180deg, #ffb3b3, var(--arc-red) 60%, #e03131);
+  box-shadow: 0 6px 0 var(--arc-red-dark), 0 10px 18px rgba(0, 0, 0, 0.4);
+  color: #3d0606;
+}
+button.btn-arcade.red:active, .btn-arcade.red:active { box-shadow: 0 2px 0 var(--arc-red-dark), 0 4px 8px rgba(0, 0, 0, 0.35); }
+button.btn-arcade.blue, .btn-arcade.blue {
+  background: linear-gradient(180deg, #b7dcff, var(--arc-blue) 60%, #1f7fe0);
+  box-shadow: 0 6px 0 #155a9e, 0 10px 18px rgba(0, 0, 0, 0.4);
+  color: #062240;
+}
+button.btn-arcade.blue:active, .btn-arcade.blue:active { box-shadow: 0 2px 0 #155a9e, 0 4px 8px rgba(0, 0, 0, 0.35); }
+button.btn-arcade.small, .btn-arcade.small { padding: 0.55rem 1.1rem; font-size: 0.85rem; border-radius: 11px; }
+button.btn-arcade.pulse, .btn-arcade.pulse { animation: arcade-pulse 1.1s infinite var(--arc-bounce); }
+@keyframes arcade-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.arcade-balance { color: #b9aef2; font-weight: 700; align-self: center; }
+.arcade-balance strong { color: #fff; }
+
+/* Big win overlay: settles over the stage, never under the maths. */
+.bigwin {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: radial-gradient(closest-side, rgba(20, 12, 54, 0.9), rgba(20, 12, 54, 0.55));
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.bigwin.show { opacity: 1; }
+.bigwin .headline {
+  font-size: 3rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #fff8dc, var(--arc-gold) 50%, #ff9f1a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.6));
+  animation: bigwin-pop 0.6s var(--arc-bounce);
+}
+.bigwin .amount { font-size: 1.5rem; font-weight: 900; color: #fff; }
+@keyframes bigwin-pop {
+  0% { transform: scale(0.2) rotate(-6deg); }
+  70% { transform: scale(1.15) rotate(2deg); }
+  100% { transform: scale(1); }
+}
+
+/* Confetti spans, thrown by script with per-piece custom properties. */
+.confetti-piece {
+  position: absolute;
+  top: -12px;
+  width: 10px;
+  height: 14px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 6;
+  animation: confetti-fall var(--fall, 1.8s) ease-in forwards;
+}
+@keyframes confetti-fall {
+  to { transform: translate(var(--drift, 0px), 110%) rotate(var(--spin, 540deg)); opacity: 0.9; }
+}
+
+/* ---------------------------------------------------------------------------
+   Blackjack table
    ------------------------------------------------------------------------ */
 
-.game-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 1rem;
-}
-
-.game-card {
-  display: block;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--bg-raised);
-  color: inherit;
-  text-decoration: none;
-}
-
-.game-card:hover { border-color: var(--accent); }
-.game-card h3 { margin: 0.5rem 0 0.25rem; }
-
-.game-card-reels {
+.bj-felt {
+  width: 100%;
+  border-radius: 130px 130px 18px 18px;
+  background:
+    radial-gradient(700px 320px at 50% -40%, rgba(255, 255, 255, 0.12), transparent 60%),
+    radial-gradient(closest-side, #1f7a48, #14532d 85%);
+  border: 3px solid #0e3d21;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 1.4rem 1.2rem 1.2rem;
   display: flex;
-  gap: 0.35rem;
-  font-size: 1.5rem;
-  line-height: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  min-height: 340px;
 }
-
-.reels {
+.bj-row { display: flex; flex-direction: column; align-items: center; gap: 0.45rem; width: 100%; }
+.bj-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.bj-hands { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; }
+.bj-hand {
   display: flex;
-  gap: 0.4rem;
-  justify-content: center;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--bg);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem;
+  border-radius: 14px;
+  transition: box-shadow 0.25s;
 }
+.bj-hand.active { box-shadow: 0 0 0 3px var(--arc-gold), 0 0 24px rgba(255, 205, 60, 0.35); }
+.bj-cards { display: flex; }
+.bj-cards .pcard:not(:first-child) { margin-left: -34px; }
 
-.reel { display: flex; flex-direction: column; gap: 0.4rem; }
-
-.reel .cell {
+.pcard {
+  position: relative;
+  width: 66px;
+  height: 94px;
+  border-radius: 9px;
+  background: linear-gradient(160deg, #ffffff, #e9e6f2);
+  border: 1px solid #b9b2cf;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 6px 12px rgba(0, 0, 0, 0.3);
+  color: #16143a;
+  transform-origin: 50% 80%;
+  animation: card-in 0.4s var(--arc-bounce);
+}
+.pcard.red { color: #d21f3c; }
+.pcard .corner {
+  white-space: pre-line;
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  font-size: 0.95rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: center;
+}
+.pcard .pip {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  font-size: 1.6rem;
+  font-size: 2rem;
+}
+.pcard.back {
+  background:
+    repeating-linear-gradient(45deg, #5a48c0 0 8px, #4636a3 8px 16px);
+  border-color: #37297f;
+}
+.pcard.back::after {
+  content: "₿";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+@keyframes card-in {
+  0% { transform: translateY(-46px) scale(0.5) rotate(-8deg); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+
+.total-badge {
+  padding: 0.18rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-weight: 900;
+  font-size: 0.9rem;
+  color: #fff;
+}
+.total-badge.bust { background: var(--arc-red-dark); border-color: var(--arc-red); }
+.total-badge.blackjack { background: var(--arc-gold-dark); border-color: var(--arc-gold); }
+
+.bj-actions { display: flex; gap: 0.7rem; flex-wrap: wrap; justify-content: center; }
+.hint-pill {
+  align-self: center;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  color: #cfc6ff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.25);
+}
+.hint-pill strong { color: var(--arc-gold); text-transform: uppercase; }
+
+.result-banner {
+  padding: 0.5rem 1.4rem;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  animation: bigwin-pop 0.45s var(--arc-bounce);
+}
+.result-banner.won { background: var(--arc-green-dark); color: #d9ffe6; box-shadow: 0 0 20px rgba(53, 212, 106, 0.4); }
+.result-banner.lost { background: var(--arc-red-dark); color: #ffdada; }
+.result-banner.pushed { background: #4a4470; color: #e6e1ff; }
+
+/* Strategy card table */
+.strategy-table { font-size: 0.72rem; }
+.strategy-table th, .strategy-table td { padding: 0.18rem 0.3rem; text-align: center; }
+.strategy-table td.H { background: rgba(255, 82, 82, 0.28); }
+.strategy-table td.S { background: rgba(74, 168, 255, 0.25); }
+.strategy-table td.D { background: rgba(53, 212, 106, 0.28); }
+.strategy-table td.P { background: rgba(255, 205, 60, 0.3); }
+
+/* ---------------------------------------------------------------------------
+   Mines board
+   ------------------------------------------------------------------------ */
+
+.mines-layout { display: flex; gap: 1.2rem; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+
+.mines-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 64px);
+  gap: 10px;
+}
+.mtile {
+  appearance: none;
+  border: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 13px;
+  cursor: pointer;
+  font-size: 1.7rem;
+  background: linear-gradient(180deg, var(--arc-tile-hi), var(--arc-tile) 60%, #37297f);
+  box-shadow: 0 5px 0 var(--arc-ledge), 0 8px 14px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.1s var(--arc-bounce), filter 0.15s;
+}
+.mtile:hover:not(:disabled) { transform: translateY(-3px); filter: brightness(1.15); }
+.mtile:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 var(--arc-ledge), 0 4px 8px rgba(0, 0, 0, 0.3); }
+.mtile:disabled { cursor: default; }
+.mtile.gem {
+  background: linear-gradient(180deg, #7df2a4, #2fbf64 60%, #1d8f43);
+  box-shadow: 0 5px 0 #14602e, 0 0 18px rgba(53, 212, 106, 0.45);
+  animation: tile-pop 0.35s var(--arc-bounce);
+}
+.mtile.boom {
+  background: linear-gradient(180deg, #ff9c9c, #ee3b3b 60%, #b32424);
+  box-shadow: 0 5px 0 #7c1414, 0 0 22px rgba(255, 82, 82, 0.55);
+  animation: tile-shake 0.45s;
+}
+.mtile.mine-shown {
+  background: linear-gradient(180deg, #6a6193, #4a4470 60%, #363156);
+  box-shadow: 0 5px 0 #262242;
+}
+@keyframes tile-pop {
+  0% { transform: scale(0.6); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes tile-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px) rotate(-3deg); }
+  40% { transform: translateX(6px) rotate(3deg); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.mines-side { display: flex; flex-direction: column; gap: 0.8rem; min-width: 220px; }
+.ladder {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 0.82rem;
+}
+.ladder li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: 8px;
+  color: #b9aef2;
   font-weight: 600;
-  line-height: 1;
+}
+.ladder li strong { color: #fff; }
+.ladder li.current {
+  background: linear-gradient(90deg, rgba(255, 205, 60, 0.25), transparent);
+  color: var(--arc-gold);
+  outline: 1px solid rgba(255, 205, 60, 0.4);
+}
+.ladder li.passed { opacity: 0.45; }
+
+/* ---------------------------------------------------------------------------
+   The floor (lobby)
+   ------------------------------------------------------------------------ */
+
+.floor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1.1rem;
+}
+.floor-card {
+  display: block;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #43378f;
+  background: linear-gradient(180deg, var(--arc-panel), var(--arc-bg2));
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 20px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s var(--arc-bounce), box-shadow 0.15s;
+}
+.floor-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 0 rgba(0, 0, 0, 0.3), 0 16px 28px rgba(0, 0, 0, 0.45);
+}
+.floor-art {
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-size: 2.2rem;
+  background:
+    radial-gradient(300px 90px at 50% 120%, rgba(255, 205, 60, 0.25), transparent),
+    linear-gradient(160deg, #4636a3, #241a5e);
+  text-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+.floor-body { padding: 0.9rem 1rem 1.1rem; }
+.floor-body h3 { margin: 0 0 0.25rem; font-size: 1.05rem; font-weight: 900; }
+.floor-body .muted { display: block; margin-bottom: 0.6rem; }
+.floor-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; font-size: 0.78rem; color: #9d8fe0; }
+.floor-stats strong { color: #fff; }
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+.badge.skill { background: rgba(53, 212, 106, 0.2); color: var(--arc-green); border: 1px solid rgba(53, 212, 106, 0.45); }
+.badge.choice { background: rgba(74, 168, 255, 0.18); color: var(--arc-blue); border: 1px solid rgba(74, 168, 255, 0.4); }
+.badge.chance { background: rgba(255, 205, 60, 0.16); color: var(--arc-gold); border: 1px solid rgba(255, 205, 60, 0.4); }
+
+/* Shared paytable bits kept from the old layer. */
+.symbol { font-size: 1.2rem; }
+.pay { display: inline-block; margin-right: 0.6rem; white-space: nowrap; }
+.facts.tight dt, .facts.tight dd { font-size: 0.85rem; }
+.spin-block { margin-bottom: 1.25rem; }
+.spin-block h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+.win-list { margin: 0.5rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.reels.static { display: flex; gap: 0.4rem; justify-content: flex-start; }
+.reels.static .reel { display: flex; flex-direction: column; gap: 0.4rem; }
+.reels.static .cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 1.35rem;
   border: 1px solid var(--border);
   border-radius: 0.35rem;
   background: var(--bg-raised);
 }
 
-/* A winning cell is marked after the reels have stopped, never before: the
-   page has no idea what is coming until the server tells it. */
-.reel .cell.lit {
-  border-color: var(--good);
-  box-shadow: 0 0 0 2px var(--good) inset;
+/* Users who ask the OS for less motion get exactly that: the games stay
+   playable, the frames just stop dancing. */
+@media (prefers-reduced-motion: reduce) {
+  .arcade-lights span, button.btn-arcade.pulse, .btn-arcade.pulse { animation: none; }
+  .pcard { animation: none; }
+  .mtile, .btn-arcade, .floor-card { transition: none; }
+  .confetti-piece { display: none; }
 }
 
-.reels.static .cell { width: 2.5rem; height: 2.5rem; font-size: 1.35rem; }
-
-.machine-readout {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 1rem;
-  margin: 0.75rem 0;
-}
-
-.win-line { font-weight: 600; }
-.win-line.good { color: var(--good); }
-.win-line.bad { color: var(--danger); }
-
-.machine-controls {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.win-list { margin: 0.5rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
-.spin-block { margin-bottom: 1.25rem; }
-.spin-block h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
-
-.symbol { font-size: 1.2rem; }
-.pay {
-  display: inline-block;
-  margin-right: 0.6rem;
-  white-space: nowrap;
-}
-
-.facts.tight dt, .facts.tight dd { font-size: 0.85rem; }
+/* The hidden attribute always wins, whatever display a class sets. Without
+   this a flex class quietly resurrects "hidden" action bars. */
+[hidden] { display: none !important; }

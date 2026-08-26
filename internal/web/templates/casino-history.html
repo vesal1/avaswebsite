@@ -1,7 +1,7 @@
 {{define "content"}}
   <section class="panel">
     <div class="panel-head">
-      <h1>My spins</h1>
+      <h1>My casino history</h1>
       <div class="chips">
         <a class="chip" href="/casino">Casino</a>
         <a class="chip" href="/casino/fairness">How the games are decided</a>
@@ -44,6 +44,38 @@
           </label>
           <button class="secondary" type="submit">Publish this seed and start a new one</button>
         </form>
+      </div>
+    </section>
+  {{end}}
+
+  {{if .Data.Rounds}}
+    <section class="panel">
+      <div class="panel-head"><h2>Table rounds</h2></div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>When</th><th>Game</th><th class="num">#</th><th class="num">Staked</th>
+                <th class="num">Returned</th><th>Result</th><th>Checkable</th><th></th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Rounds}}
+              <tr>
+                <td class="small">{{datetime .CreatedAt}}</td>
+                <td>{{title .GameKey}}</td>
+                <td class="num">{{.Nonce}}</td>
+                <td class="num">{{btc .StakeSat}}</td>
+                <td class="num {{if gt .WinSat 0}}good{{end}}">{{btc .WinSat}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{.Status}}</span></td>
+                <td>
+                  {{if .Open}}<span class="tag warn">In play</span>
+                  {{else if .Verifiable}}<span class="tag good">Seed published</span>
+                  {{else}}<span class="tag warn">Seed still sealed</span>{{end}}
+                </td>
+                <td><a class="small" href="/casino/rounds/{{.ID}}">Open</a></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
       </div>
     </section>
   {{end}}

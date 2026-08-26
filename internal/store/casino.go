@@ -157,9 +157,29 @@ func (s *Store) RotateCasinoSeed(ctx context.Context, userID int64,
 
 	now := Timestamp(time.Now())
 	err = s.Tx(ctx, func(tx *Tx) error {
+		var liveID int64
+		err := tx.QueryRowContext(ctx,
+			`SELECT id FROM casino_seeds WHERE user_id = ? AND active = 1`, userID).Scan(&liveID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNoCasinoSeed
+		}
+		if err != nil {
+			return fmt.Errorf("store: find live casino seed: %w", err)
+		}
+		// Retiring the pair publishes its secret. With a blackjack hand or a
+		// Mines board still open on it, that secret IS the deck order or the
+		// mine layout, and the player could read it before deciding their
+		// next move. The round must finish first.
+		open, err := CountOpenRoundsOnSeedTx(ctx, tx, liveID)
+		if err != nil {
+			return err
+		}
+		if open > 0 {
+			return ErrRoundStillOpen
+		}
 		result, err := tx.ExecContext(ctx,
 			`UPDATE casino_seeds SET active = 0, retired_at = ?
-			 WHERE user_id = ? AND active = 1`, now, userID)
+			 WHERE id = ?`, now, liveID)
 		if err != nil {
 			return fmt.Errorf("store: retire casino seed: %w", err)
 		}
@@ -429,6 +449,261 @@ func (s *Store) BiggestCasinoWins(ctx context.Context, limit int) ([]CasinoSpin,
 			return nil, fmt.Errorf("store: scan casino spin: %w", err)
 		}
 		out = append(out, spin)
+	}
+	return out, rows.Err()
+}
+
+// ---------------------------------------------------------------------------
+// Stateful rounds: blackjack, Mines, and anything else that spans requests
+// ---------------------------------------------------------------------------
+
+// Round status values.
+const (
+	RoundOpen   = "open"
+	RoundWon    = "won"
+	RoundLost   = "lost"
+	RoundPushed = "pushed"
+)
+
+// CasinoRound is one stateful game round: opened with a stake, acted on over
+// several requests, settled once.
+type CasinoRound struct {
+	ID          int64
+	UserID      int64
+	SeedID      int64
+	GameKey     string
+	Commitment  string
+	ClientSeed  string
+	Nonce       int64
+	StakeSat    int64
+	WinSat      int64
+	Status      string
+	State       string
+	RTPBps      int64
+	StakeTxnID  int64
+	PayoutTxnID int64
+	CreatedAt   time.Time
+	SettledAt   time.Time
+	// ServerSeed joins from the seed pair and stays empty until that pair is
+	// retired, exactly as for spins.
+	ServerSeed string
+}
+
+// Open reports whether the round is still being played.
+func (r CasinoRound) Open() bool { return r.Status == RoundOpen }
+
+// NetSat is the round's result from the player's side.
+func (r CasinoRound) NetSat() int64 { return r.WinSat - r.StakeSat }
+
+// Verifiable reports whether the seed behind the round has been published.
+func (r CasinoRound) Verifiable() bool { return r.ServerSeed != "" && !r.Open() }
+
+// ErrNoOpenRound is returned when an action arrives for a round that is not
+// there — settled, never started, or someone else's.
+var ErrNoOpenRound = errors.New("store: no open round")
+
+// ErrRoundStillOpen refuses a seed rotation while a round is being played on
+// the pair. Finish or settle the round, then rotate.
+var ErrRoundStillOpen = errors.New("store: finish your open round before publishing the seed behind it")
+
+const casinoRoundColumns = `r.id, r.user_id, r.seed_id, r.game_key, r.commitment,
+	r.client_seed, r.nonce, r.stake_sat, r.win_sat, r.status, r.state, r.rtp_bps,
+	r.stake_txn_id, r.payout_txn_id, r.created_at, r.settled_at,
+	CASE WHEN k.active = 1 THEN '' ELSE k.server_seed END`
+
+func scanCasinoRound(row interface{ Scan(...any) error }) (CasinoRound, error) {
+	var (
+		round   CasinoRound
+		stakeTx sql.NullInt64
+		payTx   sql.NullInt64
+		created string
+		settled sql.NullString
+	)
+	if err := row.Scan(&round.ID, &round.UserID, &round.SeedID, &round.GameKey,
+		&round.Commitment, &round.ClientSeed, &round.Nonce, &round.StakeSat,
+		&round.WinSat, &round.Status, &round.State, &round.RTPBps,
+		&stakeTx, &payTx, &created, &settled, &round.ServerSeed); err != nil {
+		return CasinoRound{}, err
+	}
+	round.StakeTxnID = stakeTx.Int64
+	round.PayoutTxnID = payTx.Int64
+	round.CreatedAt = mustTimestamp(created)
+	if settled.Valid {
+		round.SettledAt = mustTimestamp(settled.String)
+	}
+	return round, nil
+}
+
+// ScanCasinoRoundRow reads a round row whose columns match
+// casinoRoundColumns, for callers composing their own in-transaction reads.
+func ScanCasinoRoundRow(row interface{ Scan(...any) error }) (CasinoRound, error) {
+	return scanCasinoRound(row)
+}
+
+// InsertCasinoRoundTx opens a round inside the transaction that also claims
+// its nonce and posts its stake.
+func InsertCasinoRoundTx(ctx context.Context, tx *Tx, at string, round CasinoRound) (int64, error) {
+	id, err := tx.InsertID(ctx,
+		`INSERT INTO casino_rounds (user_id, seed_id, game_key, commitment, client_seed,
+			nonce, stake_sat, win_sat, status, state, rtp_bps, stake_txn_id, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+		round.UserID, round.SeedID, round.GameKey, round.Commitment, round.ClientSeed,
+		round.Nonce, round.StakeSat, RoundOpen, round.State, round.RTPBps,
+		nullInt64(round.StakeTxnID), at)
+	if err != nil {
+		return 0, fmt.Errorf("store: open casino round: %w", err)
+	}
+	return id, nil
+}
+
+// OpenCasinoRoundTx loads a player's live round for one game, for update.
+func OpenCasinoRoundTx(ctx context.Context, tx *Tx, userID int64, gameKey string) (CasinoRound, error) {
+	row := tx.QueryRowContext(ctx,
+		`SELECT `+casinoRoundColumns+`
+		 FROM casino_rounds r JOIN casino_seeds k ON k.id = r.seed_id
+		 WHERE r.user_id = ? AND r.game_key = ? AND r.status = ?`,
+		userID, gameKey, RoundOpen)
+	round, err := scanCasinoRound(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CasinoRound{}, ErrNoOpenRound
+	}
+	if err != nil {
+		return CasinoRound{}, fmt.Errorf("store: open casino round: %w", err)
+	}
+	return round, nil
+}
+
+// OpenCasinoRound is the read-only variant, for rendering the page.
+func (s *Store) OpenCasinoRound(ctx context.Context, userID int64, gameKey string) (CasinoRound, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+casinoRoundColumns+`
+		 FROM casino_rounds r JOIN casino_seeds k ON k.id = r.seed_id
+		 WHERE r.user_id = ? AND r.game_key = ? AND r.status = ?`,
+		userID, gameKey, RoundOpen)
+	round, err := scanCasinoRound(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CasinoRound{}, ErrNoOpenRound
+	}
+	if err != nil {
+		return CasinoRound{}, fmt.Errorf("store: open casino round: %w", err)
+	}
+	return round, nil
+}
+
+// UpdateCasinoRoundTx writes a round's new state after an action.
+//
+// The update is guarded on the round still being open, so two racing requests
+// cannot both act: the loser sees no row and the caller reports a conflict
+// rather than double-applying a move.
+func UpdateCasinoRoundTx(ctx context.Context, tx *Tx, roundID int64, state string, extraStakeSat int64) error {
+	result, err := tx.ExecContext(ctx,
+		`UPDATE casino_rounds SET state = ?, stake_sat = stake_sat + ?
+		 WHERE id = ? AND status = ?`, state, extraStakeSat, roundID, RoundOpen)
+	if err != nil {
+		return fmt.Errorf("store: update casino round: %w", err)
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return ErrNoOpenRound
+	}
+	return nil
+}
+
+// SettleCasinoRoundTx closes a round with its outcome.
+func SettleCasinoRoundTx(ctx context.Context, tx *Tx, at string, roundID int64,
+	status string, state string, winSat, payoutTxnID int64) error {
+	if status == RoundOpen {
+		return fmt.Errorf("store: a round cannot settle to open")
+	}
+	result, err := tx.ExecContext(ctx,
+		`UPDATE casino_rounds SET status = ?, state = ?, win_sat = ?,
+			payout_txn_id = ?, settled_at = ?
+		 WHERE id = ? AND status = ?`,
+		status, state, winSat, nullInt64(payoutTxnID), at, roundID, RoundOpen)
+	if err != nil {
+		return fmt.Errorf("store: settle casino round: %w", err)
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return ErrNoOpenRound
+	}
+	return nil
+}
+
+// CasinoRoundByID returns one round with its seed, blanked while live.
+func (s *Store) CasinoRoundByID(ctx context.Context, id int64) (CasinoRound, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+casinoRoundColumns+`
+		 FROM casino_rounds r JOIN casino_seeds k ON k.id = r.seed_id
+		 WHERE r.id = ?`, id)
+	round, err := scanCasinoRound(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CasinoRound{}, ErrNotFound
+	}
+	if err != nil {
+		return CasinoRound{}, fmt.Errorf("store: casino round %d: %w", id, err)
+	}
+	return round, nil
+}
+
+// RecentCasinoRounds lists a player's rounds, newest first.
+func (s *Store) RecentCasinoRounds(ctx context.Context, userID int64, limit int) ([]CasinoRound, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+casinoRoundColumns+`
+		 FROM casino_rounds r JOIN casino_seeds k ON k.id = r.seed_id
+		 WHERE r.user_id = ? ORDER BY r.id DESC LIMIT ?`, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: recent casino rounds: %w", err)
+	}
+	defer rows.Close()
+
+	var out []CasinoRound
+	for rows.Next() {
+		round, err := scanCasinoRound(rows)
+		if err != nil {
+			return nil, fmt.Errorf("store: scan casino round: %w", err)
+		}
+		out = append(out, round)
+	}
+	return out, rows.Err()
+}
+
+// CountOpenRoundsOnSeed reports how many live rounds ride on a seed pair.
+// Rotation must refuse while this is non-zero: publishing the seed mid-round
+// would hand the player the mine layout or the deck order while they can
+// still act on it.
+func CountOpenRoundsOnSeedTx(ctx context.Context, tx *Tx, seedID int64) (int, error) {
+	var count int
+	err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM casino_rounds WHERE seed_id = ? AND status = ?`,
+		seedID, RoundOpen).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("store: count open rounds: %w", err)
+	}
+	return count, nil
+}
+
+// CasinoRoundTotalsByGame sums round play per game for the admin floor.
+func (s *Store) CasinoRoundTotalsByGame(ctx context.Context) ([]CasinoGameTotals, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT game_key, COUNT(*), COALESCE(SUM(stake_sat), 0),
+		        COALESCE(SUM(win_sat), 0), COUNT(DISTINCT user_id)
+		 FROM casino_rounds WHERE status != ?
+		 GROUP BY game_key ORDER BY SUM(stake_sat) DESC`, RoundOpen)
+	if err != nil {
+		return nil, fmt.Errorf("store: casino round totals: %w", err)
+	}
+	defer rows.Close()
+
+	var out []CasinoGameTotals
+	for rows.Next() {
+		var totals CasinoGameTotals
+		if err := rows.Scan(&totals.GameKey, &totals.Spins, &totals.StakeSat,
+			&totals.WinSat, &totals.Players); err != nil {
+			return nil, fmt.Errorf("store: scan casino round totals: %w", err)
+		}
+		out = append(out, totals)
 	}
 	return out, rows.Err()
 }

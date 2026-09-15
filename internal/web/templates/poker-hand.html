@@ -1,0 +1,107 @@
+{{define "content"}}
+  {{$h := .Data.Hand}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Hand {{$h.HandNumber}}</h1>
+      {{if $h.Verifiable}}<span class="tag good">Seed published</span>{{else}}<span class="tag warn">In progress</span>{{end}}
+    </div>
+    <div class="panel-body">
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Pot</div><div class="value">{{btc $h.PotSat}}</div></div>
+        <div class="stat"><div class="label">Rake</div><div class="value">{{btc $h.RakeSat}}</div></div>
+        <div class="stat"><div class="label">Board</div><div class="value small">{{if $h.Board}}{{$h.Board}}{{else}}—{{end}}</div></div>
+        <div class="stat"><div class="label">Dealt</div><div class="value small">{{datetime $h.StartedAt}}</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Fairness</h2><a href="/poker/verify">Check it yourself</a></div>
+    <div class="panel-body stack">
+      <div class="field">
+        <label>Commitment, published before the deal</label>
+        <div class="address">{{$h.Commitment}}</div>
+      </div>
+      <div class="field">
+        <label>Combined player seed</label>
+        <div class="address">{{$h.ClientSeed}}</div>
+      </div>
+      {{if $h.Verifiable}}
+        <div class="field">
+          <label>Server seed, published after the hand</label>
+          <div class="address">{{$h.ServerSeed}}</div>
+        </div>
+        {{if .Data.VerifyErr}}
+          <div class="notice bad">
+            This hand does not verify: {{.Data.VerifyErr}}. Please report it —
+            that should never happen.
+          </div>
+        {{else}}
+          <div class="notice good">
+            Checked on this page: the published seed hashes to the commitment
+            above, and produces the deck below.
+          </div>
+          <div class="address">{{range .Data.Deck}}{{.}} {{end}}</div>
+        {{end}}
+      {{else}}
+        <div class="notice info">
+          The seed is published when the hand finishes. Until then it is secret,
+          which is what stops anybody knowing what is coming.
+        </div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Seats</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th class="num">Seat</th><th class="num">Started with</th><th class="num">Put in</th>
+              <th class="num">Won</th><th>Cards</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Players}}
+            <tr>
+              <td class="num">{{.SeatNumber}}</td>
+              <td class="num">{{btc .StartingStack}}</td>
+              <td class="num">{{btc .CommittedSat}}</td>
+              <td class="num">{{btc .WonSat}}</td>
+              <td>{{if .HoleCards}}{{.HoleCards}}{{else}}<span class="muted">not shown</span>{{end}}</td>
+              <td class="muted small">{{.Result}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {{if .Data.Actions}}
+  <section class="panel">
+    <div class="panel-head"><h2>Action</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th class="num">#</th><th>Street</th><th class="num">Seat</th><th>Action</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          {{range .Data.Actions}}
+            <tr>
+              <td class="num">{{.Sequence}}</td>
+              <td class="muted">{{.Stage}}</td>
+              <td class="num">{{.SeatNumber}}</td>
+              <td>{{title .Action}}</td>
+              <td class="num">{{if .AmountSat}}{{btc .AmountSat}}{{else}}—{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  {{if $h.History}}
+  <section class="panel">
+    <div class="panel-head"><h2>Hand history</h2></div>
+    <div class="panel-body"><pre class="address" style="white-space:pre-wrap">{{$h.History}}</pre></div>
+  </section>
+  {{end}}
+{{end}}

@@ -1,0 +1,122 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>Promotions</h1></div>
+    <div class="panel-body stack">
+      <p class="muted">
+        A bonus is not cash. It sits in a separate balance you can stake but
+        cannot withdraw, and it becomes withdrawable money only once its
+        wagering requirement has been met. Everything that decides whether a
+        bonus clears is on this page, not buried in terms.
+      </p>
+    </div>
+  </section>
+
+  {{if .Data.Summary.Active}}
+  <section class="panel">
+    <div class="panel-head"><h2>Your active bonuses</h2></div>
+    <div class="panel-body">
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="label">Bonus balance</div>
+          <div class="value">{{btc .Data.Summary.BonusBalanceSat}}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Wagering left</div>
+          <div class="value">{{btc .Data.Summary.TotalRemainingWageringSat}}</div>
+        </div>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Bonus</th><th class="num">Amount</th><th>Progress</th><th>Expires</th></tr></thead>
+        <tbody>
+          {{range .Data.Summary.Active}}
+            <tr>
+              <td>{{if .Note}}{{.Note}}{{else}}{{title .Kind}}{{end}}</td>
+              <td class="num">{{btc .AmountSat}}</td>
+              <td>
+                {{btc .WageringDoneSat}} of {{btc .WageringRequiredSat}} BTC
+                <div class="muted small">{{pct .ProgressBps}} complete</div>
+              </td>
+              <td class="small">{{date .ExpiresAt}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-body">
+      <div class="notice warn">
+        While a bonus is active you cannot withdraw. You can finish the
+        wagering, or give up the bonus from your
+        <a href="/account">account page</a> — your own money is not affected
+        either way.
+      </div>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Current offers</h2></div>
+    {{if .Data.Offers}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Offer</th><th>What you get</th><th>Wagering</th>
+                <th>Minimum price</th><th>Valid for</th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Offers}}
+              <tr>
+                <td>
+                  <strong>{{.Name}}</strong>
+                  <div class="muted small">{{.Code}}{{if .Description}} · {{.Description}}{{end}}</div>
+                </td>
+                <td>
+                  {{if .MatchBps}}{{pct .MatchBps}} of your deposit{{end}}
+                  {{if and .MatchBps .AmountSat}} plus {{end}}
+                  {{if .AmountSat}}{{btc .AmountSat}} BTC{{end}}
+                  {{if .MaxAmountSat}}<div class="muted small">up to {{btc .MaxAmountSat}} BTC</div>{{end}}
+                  {{if .MinDepositSat}}<div class="muted small">deposit at least {{btc .MinDepositSat}} BTC</div>{{end}}
+                </td>
+                <td>{{if .WageringX100}}{{pct .WageringX100}} of the bonus{{else}}None{{end}}</td>
+                <td>{{if .MinOddsMilli}}{{odds .MinOddsMilli}}{{else}}Any{{end}}</td>
+                <td>{{.ValidDays}} days</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <p class="empty">There are no offers running at the moment.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>How wagering is counted</h2></div>
+    <div class="panel-body stack">
+      <p class="muted">
+        Different products clear a bonus at different rates, because they carry
+        different margins for us. A bonus that cleared at full rate on
+        near-even-money bets would be a promotion to arbitrage rather than one
+        to play, so the rates differ — and they are published here rather than
+        being something you find out afterwards.
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Product</th><th class="num">Counts toward wagering</th></tr></thead>
+          <tbody>
+            {{range .Data.Rates}}
+              <tr><td>{{.Product}}</td><td class="num">{{pct .Bps}}</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      <ul class="muted">
+        <li>Stakes below an offer's minimum price do not count toward it.</li>
+        <li>A bonus that expires before it clears is removed; your own money stays.</li>
+        <li>Staking draws on your own cash first, so a bonus you later give up costs you as little as possible.</li>
+        <li>Once a bonus clears, the remaining balance becomes ordinary withdrawable cash.</li>
+      </ul>
+    </div>
+  </section>
+{{end}}

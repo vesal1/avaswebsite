@@ -1,0 +1,272 @@
+{{define "content"}}
+  {{$ctx := .}}
+  {{$p := .Data.Player}}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h1>{{$p.DisplayName}}</h1>
+        <div class="muted small">#{{$p.ID}} · {{$p.Email}} · {{$p.Country}} · joined {{date $p.CreatedAt}}</div>
+      </div>
+      <div class="chips">
+        <span class="tag {{statusTag $p.Status}}">{{title $p.Status}}</span>
+        <span class="tag {{statusTag $p.KYCStatus}}">{{title $p.KYCStatus}}</span>
+        <span class="tag">{{title $p.Role}}</span>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="label">Withdrawable cash</div>
+          <div class="value">{{btc .Data.CashSat}}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Bonus balance</div>
+          <div class="value">{{btc .Data.Bonus.BonusBalanceSat}}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Wagering left</div>
+          <div class="value">{{btc .Data.Bonus.TotalRemainingWageringSat}}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Open flags</div>
+          <div class="value">{{len .Data.Flags}}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {{if .Data.CanMoveMoney}}
+  <section class="panel">
+    <div class="panel-head"><h2>Grant a bonus</h2></div>
+    <div class="panel-body stack">
+      {{if .Data.Offers}}
+      <form method="post" action="/admin/players/{{$p.ID}}/bonus" class="field-row" style="align-items:end">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field">
+          <label for="offer">From a live offer</label>
+          <select id="offer" name="offer">
+            {{range .Data.Offers}}<option value="{{.ID}}">{{.Code}} — {{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div class="field">
+          <label for="qualifying_deposit">Qualifying deposit (BTC)</label>
+          <input type="text" id="qualifying_deposit" name="qualifying_deposit" placeholder="0.01000000">
+        </div>
+        <div class="field" style="flex:0 0 auto"><button type="submit">Grant from offer</button></div>
+      </form>
+      <hr style="border:none;border-top:1px solid var(--border)">
+      {{end}}
+
+      <form method="post" action="/admin/players/{{$p.ID}}/bonus" class="stack">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="offer" value="0">
+        <div class="field-row">
+          <div class="field">
+            <label for="kind">Kind</label>
+            <select id="kind" name="kind">
+              <option value="comp">Comp</option>
+              <option value="free_credit">Free credit</option>
+              <option value="deposit_match">Deposit match</option>
+              {{if .Data.TestAllowed}}<option value="test_credit">Test credit (not real money)</option>{{end}}
+            </select>
+          </div>
+          <div class="field">
+            <label for="amount">Amount (BTC)</label>
+            <input type="text" id="amount" name="amount" placeholder="0.00500000" required>
+          </div>
+          <div class="field">
+            <label for="wagering_x100">Wagering (x100)</label>
+            <input type="number" id="wagering_x100" name="wagering_x100" value="{{.Data.DefaultWagerX}}" min="0">
+            <p class="hint">500 means the bonus must be staked five times. 0 pays straight to cash.</p>
+          </div>
+          <div class="field">
+            <label for="min_odds">Minimum price</label>
+            <input type="text" id="min_odds" name="min_odds" placeholder="1.50">
+          </div>
+          <div class="field">
+            <label for="valid_days">Valid for (days)</label>
+            <input type="number" id="valid_days" name="valid_days" value="30" min="1">
+          </div>
+        </div>
+        <div class="field">
+          <label for="note">Reason (goes on the audit trail)</label>
+          <input type="text" id="note" name="note" required placeholder="Goodwill after the settlement delay on 12 May">
+        </div>
+        <button type="submit">Grant bonus</button>
+        {{if not .Data.TestAllowed}}
+          <p class="hint">
+            Test credits are disabled on this server. They mint money with no
+            deposit behind it, so they are refused wherever real customer money
+            is held.
+          </p>
+        {{end}}
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Adjust cash balance</h2></div>
+    <div class="panel-body">
+      <div class="notice warn">
+        This moves real money with no deposit or bet behind it. Anything at or
+        above {{btc .Data.ApprovalSat}} BTC needs a second person to release it,
+        and you cannot approve your own request.
+      </div>
+      <form method="post" action="/admin/players/{{$p.ID}}/adjust" class="stack"
+            data-confirm="This changes a customer's real balance. Continue?">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field-row">
+          <div class="field">
+            <label for="direction">Direction</label>
+            <select id="direction" name="direction">
+              <option value="credit">Credit the customer</option>
+              <option value="debit">Debit the customer</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="adjust-amount">Amount (BTC)</label>
+            <input type="text" id="adjust-amount" name="amount" placeholder="0.00500000" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="reason">Reason</label>
+          <input type="text" id="reason" name="reason" required
+                 placeholder="Refund for market settled on the wrong result">
+        </div>
+        <button type="submit">Request adjustment</button>
+      </form>
+    </div>
+  </section>
+  {{end}}
+
+  {{if .Data.Grants}}
+  <section class="panel">
+    <div class="panel-head"><h2>Bonus history</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Kind</th><th class="num">Amount</th><th>Wagering</th>
+              <th>Status</th><th>Granted</th><th>Expires</th><th></th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Grants}}
+            <tr>
+              <td>{{.ID}}</td>
+              <td>
+                {{title .Kind}}
+                {{if .IsTest}}<span class="tag warn">Test</span>{{end}}
+                {{if .Note}}<div class="muted small">{{.Note}}</div>{{end}}
+              </td>
+              <td class="num">{{btc .AmountSat}}</td>
+              <td class="small">{{btc .WageringDoneSat}} / {{btc .WageringRequiredSat}}</td>
+              <td>
+                <span class="tag {{statusTag .Status}}">{{title .Status}}</span>
+                {{if .CloseReason}}<div class="muted small">{{.CloseReason}}</div>{{end}}
+              </td>
+              <td class="small">{{date .GrantedAt}}</td>
+              <td class="small">{{date .ExpiresAt}}</td>
+              <td>
+                {{if and (eq .Status "active") $ctx.Data.CanMoveMoney}}
+                  <form method="post" action="/admin/bonus/{{.ID}}/cancel" class="field-row" style="gap:6px">
+                    <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                    <input type="text" name="reason" placeholder="Reason" style="width:120px">
+                    <button class="secondary" type="submit">Cancel</button>
+                  </form>
+                {{end}}
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  {{if .Data.Flags}}
+  <section class="panel">
+    <div class="panel-head"><h2>Compliance flags</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Raised</th><th>Kind</th><th>Severity</th><th>Detail</th><th>Resolved</th></tr></thead>
+        <tbody>
+          {{range .Data.Flags}}
+            <tr>
+              <td class="small">{{datetime .RaisedAt}}</td>
+              <td>{{title .Kind}}</td>
+              <td><span class="tag {{statusTag .Severity}}">{{title .Severity}}</span></td>
+              <td class="muted small">{{.Detail}}</td>
+              <td class="small">{{if .ResolvedAt}}{{datetime .ResolvedAt}}<div class="muted">{{.Resolution}}</div>{{else}}—{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Ledger</h2></div>
+    {{if .Data.Ledger}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>When</th><th>Kind</th><th>Memo</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            {{range .Data.Ledger}}
+              <tr>
+                <td class="small">{{datetime .At}}</td>
+                <td>{{title .Kind}}</td>
+                <td class="muted small">{{.Memo}}</td>
+                <td class="num">{{range .Entries}}{{btc .AmountSat}}{{end}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">No money has moved on this account.</p>{{end}}
+  </section>
+
+  {{if .Data.Bets}}
+  <section class="panel">
+    <div class="panel-head"><h2>Recent bets</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>#</th><th>Kind</th><th class="num">Stake</th><th class="num">Price</th>
+                   <th class="num">Returned</th><th>Status</th><th>Placed</th></tr></thead>
+        <tbody>
+          {{range .Data.Bets}}
+            <tr>
+              <td>{{.ID}}</td>
+              <td>{{title .Kind}}</td>
+              <td class="num">{{btc .StakeSat}}</td>
+              <td class="num">{{odds .OddsMilli}}</td>
+              <td class="num">{{btc .PayoutSat}}</td>
+              <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+              <td class="small">{{datetime .PlacedAt}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Audit trail</h2></div>
+    {{if .Data.Audit}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>When</th><th>Action</th><th>Detail</th></tr></thead>
+          <tbody>
+            {{range .Data.Audit}}
+              <tr>
+                <td class="small">{{datetime .At}}</td>
+                <td>{{title .Action}}</td>
+                <td class="muted small">{{.Detail}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">Nothing recorded yet.</p>{{end}}
+  </section>
+{{end}}

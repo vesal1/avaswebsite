@@ -1,0 +1,42 @@
+{{define "content"}}
+  {{$ctx := .}}
+  {{if .Data.Live}}
+  <section class="panel">
+    <div class="panel-head"><h2>In play</h2><span class="tag live">Live now</span></div>
+    {{range .Data.Live}}
+      {{template "event-row" dict "Card" . "OnSlip" $ctx.OnSlip "CSRF" $ctx.CSRF "OddsFormat" $ctx.OddsFormat "Next" "/"}}
+    {{end}}
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Next off</h2>
+      <a href="/sports">All {{.Data.SportTotal}} sports</a>
+    </div>
+    {{if .Data.Cards}}
+      {{range .Data.Cards}}
+        {{template "event-row" dict "Card" . "OnSlip" $ctx.OnSlip "CSRF" $ctx.CSRF "OddsFormat" $ctx.OddsFormat "Next" "/"}}
+      {{end}}
+    {{else}}
+      <p class="empty">
+        No events are open for betting yet.
+        {{if and .User .User.CanTrade}}<a href="/admin/events">Create one in the back office</a>.{{end}}
+      </p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Every sport, priced the same way</h2></div>
+    <div class="panel-body">
+      <p class="muted">
+        {{.Data.SportTotal}} sports across {{len .Nav}} categories. Markets are
+        built from the shape of the contest rather than its name, so a new
+        competition inherits the right markets on the day it is added.
+      </p>
+      <div class="chips">
+        {{range .Nav}}<a class="chip" href="/sports#{{.Category}}">{{.Category}}</a>{{end}}
+      </div>
+    </div>
+  </section>
+{{end}}

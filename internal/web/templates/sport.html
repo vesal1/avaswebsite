@@ -1,0 +1,46 @@
+{{define "content"}}
+  {{$ctx := .}}
+  {{$sport := .Data.Sport}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>{{$sport.Name}}</h1>
+      <span class="muted small">{{$sport.Category}}</span>
+    </div>
+    {{if .Data.Competitions}}
+    <div class="panel-body">
+      <div class="chips">
+        <a class="chip" href="/sports/{{$sport.Key}}" {{if not $ctx.Data.FilterID}}aria-current="true"{{end}}>All</a>
+        {{range .Data.Competitions}}
+          <a class="chip" href="/sports/{{$sport.Key}}?competition={{.ID}}"
+             {{if eq .ID $ctx.Data.FilterID}}aria-current="true"{{end}}>{{.Name}}</a>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Upcoming</h2></div>
+    {{if .Data.Cards}}
+      {{range .Data.Cards}}
+        {{template "event-row" dict "Card" . "OnSlip" $ctx.OnSlip "CSRF" $ctx.CSRF "OddsFormat" $ctx.OddsFormat "Next" (print "/sports/" $sport.Key)}}
+      {{end}}
+    {{else}}
+      <p class="empty">No {{$sport.Name}} events are open for betting right now.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Markets we price on {{$sport.Name}}</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Market</th><th>How it settles</th></tr></thead>
+        <tbody>
+          {{range .Data.Markets}}
+            <tr><td><strong>{{.Name}}</strong></td><td class="muted">{{.Description}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{{end}}

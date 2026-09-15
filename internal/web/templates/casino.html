@@ -1,0 +1,93 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Casino</h1>
+      <div class="chips">
+        <a class="chip" href="/casino/fairness">How the games are decided</a>
+        {{if .User}}<a class="chip" href="/casino/history">My history</a>{{end}}
+      </div>
+    </div>
+    <div class="panel-body stack">
+      <p class="muted">
+        Every game on this floor is labelled with what it actually is.
+        <strong>Skill</strong> means your decisions change the return and we
+        print the strategy that maximises it. <strong>Your call</strong> means
+        the decisions are real but every choice pays the same published rate.
+        <strong>Chance</strong> means the committed seed decides everything and
+        the return figure is computed from the machine itself. What none of
+        them have is a dial: the engine that settles a round is handed a game,
+        a seed and a stake, and nothing else.
+      </p>
+    </div>
+  </section>
+
+  {{if .Data.Totals}}
+    {{with .Data.Totals}}
+      <section class="panel">
+        <div class="panel-head"><h2>Your play so far</h2></div>
+        <div class="panel-body">
+          <dl class="facts">
+            <div><dt>Spins</dt><dd>{{.Spins}}</dd></div>
+            <div><dt>Staked</dt><dd>{{btc .StakeSat}} BTC</dd></div>
+            <div><dt>Returned</dt><dd>{{btc .WinSat}} BTC</dd></div>
+            <div><dt>Net</dt>
+              <dd class="{{if lt .NetSat 0}}bad{{else}}good{{end}}">{{btc .NetSat}} BTC</dd></div>
+            <div><dt>Your return</dt><dd>{{pct .ReturnBps}}</dd></div>
+          </dl>
+          <p class="muted small">
+            Your own return will wander a long way from any game's published
+            figure over a human number of rounds. That is what the figure
+            means: it describes the game over millions of rounds, not your
+            session.
+          </p>
+        </div>
+      </section>
+    {{end}}
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Tables</h2></div>
+    <div class="panel-body">
+      <div class="floor-grid">
+        {{range .Data.Tables}}
+          <a class="floor-card" href="{{.Href}}">
+            <div class="floor-art">{{range .Glyphs}}<span>{{.}}</span>{{end}}</div>
+            <div class="floor-body">
+              <span class="badge {{.BadgeClass}}">{{.Badge}}</span>
+              <h3>{{.Name}}</h3>
+              <span class="muted small">{{.Blurb}}</span>
+              <div class="floor-stats">
+                <span>Return <strong>{{.Return}}</strong></span>
+                <span>{{.Layout}}</span>
+                <span>{{btc .MinStake}} – {{btc .MaxStake}} BTC</span>
+              </div>
+            </div>
+          </a>
+        {{end}}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Slots</h2></div>
+    <div class="panel-body">
+      <div class="floor-grid">
+        {{range .Data.Slots}}
+          <a class="floor-card" href="{{.Href}}">
+            <div class="floor-art">{{range .Glyphs}}<span>{{.}}</span>{{end}}</div>
+            <div class="floor-body">
+              <span class="badge {{.BadgeClass}}">{{.Badge}}</span>
+              <h3>{{.Name}}</h3>
+              <span class="muted small">{{.Blurb}}</span>
+              <div class="floor-stats">
+                <span>Return <strong>{{.Return}}</strong></span>
+                <span>{{.Layout}}</span>
+                <span>{{btc .MinStake}} – {{btc .MaxStake}} BTC</span>
+              </div>
+            </div>
+          </a>
+        {{end}}
+      </div>
+    </div>
+  </section>
+{{end}}

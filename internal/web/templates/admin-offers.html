@@ -1,0 +1,108 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head"><h1>Create an offer</h1></div>
+    <div class="panel-body">
+      <form method="post" action="/admin/offers" class="stack">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field-row">
+          <div class="field">
+            <label for="code">Code</label>
+            <input type="text" id="code" name="code" required placeholder="WELCOME50">
+          </div>
+          <div class="field">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" required placeholder="50% welcome bonus">
+          </div>
+          <div class="field">
+            <label for="kind">Kind</label>
+            <select id="kind" name="kind">
+              <option value="deposit_match">Deposit match</option>
+              <option value="free_credit">Free credit</option>
+              <option value="comp">Comp</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="description">Description shown to customers</label>
+          <input type="text" id="description" name="description" placeholder="On your first deposit">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="match_bps">Match (basis points)</label>
+            <input type="number" id="match_bps" name="match_bps" value="5000" min="0">
+            <p class="hint">5000 is 50% of the qualifying deposit.</p>
+          </div>
+          <div class="field">
+            <label for="amount">Fixed amount (BTC)</label>
+            <input type="text" id="amount" name="amount" placeholder="0.00000000">
+          </div>
+          <div class="field">
+            <label for="max_amount">Maximum award (BTC)</label>
+            <input type="text" id="max_amount" name="max_amount" placeholder="0.00500000">
+          </div>
+          <div class="field">
+            <label for="min_deposit">Minimum deposit (BTC)</label>
+            <input type="text" id="min_deposit" name="min_deposit" placeholder="0.00100000">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="wagering_x100">Wagering (x100)</label>
+            <input type="number" id="wagering_x100" name="wagering_x100" value="500" min="0">
+          </div>
+          <div class="field">
+            <label for="min_odds">Minimum price</label>
+            <input type="text" id="min_odds" name="min_odds" placeholder="1.50">
+          </div>
+          <div class="field">
+            <label for="valid_days">Valid for (days)</label>
+            <input type="number" id="valid_days" name="valid_days" value="30" min="1">
+          </div>
+          <div class="field">
+            <label for="max_per_user">Times per customer</label>
+            <input type="number" id="max_per_user" name="max_per_user" value="1" min="1">
+          </div>
+        </div>
+        <button type="submit">Create offer</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>All offers</h2></div>
+    {{if .Data.Offers}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Code</th><th>Name</th><th>Kind</th><th>Award</th>
+                <th>Wagering</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.Offers}}
+              <tr>
+                <td><strong>{{.Code}}</strong></td>
+                <td>{{.Name}}<div class="muted small">{{.Description}}</div></td>
+                <td class="muted">{{title .Kind}}</td>
+                <td class="small">
+                  {{if .MatchBps}}{{pct .MatchBps}} match{{end}}
+                  {{if .AmountSat}} + {{btc .AmountSat}}{{end}}
+                  {{if .MaxAmountSat}}<div class="muted">cap {{btc .MaxAmountSat}}</div>{{end}}
+                </td>
+                <td class="small">{{pct .WageringX100}}</td>
+                <td><span class="tag {{if .Active}}good{{else}}neutral{{end}}">{{if .Active}}Live{{else}}Retired{{end}}</span></td>
+                <td>
+                  <form method="post" action="/admin/offers/{{.ID}}/toggle">
+                    <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                    <input type="hidden" name="active" value="{{if .Active}}0{{else}}1{{end}}">
+                    <button class="secondary" type="submit">{{if .Active}}Retire{{else}}Make live{{end}}</button>
+                  </form>
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">No offers yet.</p>{{end}}
+  </section>
+{{end}}

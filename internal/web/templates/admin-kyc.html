@@ -1,0 +1,51 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head"><h1>Identity verification</h1></div>
+    <div class="panel-body">
+      <p class="muted">
+        Documents live with the verification provider. Only the reference is
+        held here, so a decision means "the provider's record checks out",
+        not "I looked at a passport scan in this database".
+      </p>
+    </div>
+  </section>
+
+  {{range .Data.Queue}}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>{{.User.DisplayName}} <span class="muted small">#{{.User.ID}} · {{.User.Email}}</span></h2>
+        <span class="tag {{statusTag .User.KYCStatus}}">{{title .User.KYCStatus}}</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Document</th><th>Reference</th><th>Submitted</th><th>Status</th><th>Decision</th></tr></thead>
+          <tbody>
+            {{$user := .User}}
+            {{range .Documents}}
+              <tr>
+                <td>{{title .Kind}}</td>
+                <td class="small">{{.Reference}}</td>
+                <td class="small">{{datetime .SubmittedAt}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+                <td>
+                  {{if eq .Status "pending"}}
+                    <form method="post" action="/admin/kyc/{{.ID}}/decide" class="field-row" style="gap:6px">
+                      <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                      <input type="hidden" name="user" value="{{$user.ID}}">
+                      <input type="text" name="note" placeholder="Note" style="width:150px">
+                      <button type="submit" name="decision" value="accept">Accept</button>
+                      <button class="secondary" type="submit" name="decision" value="reject">Reject</button>
+                    </form>
+                  {{end}}
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {{else}}
+    <section class="panel"><p class="empty">Nothing waiting for review.</p></section>
+  {{end}}
+{{end}}

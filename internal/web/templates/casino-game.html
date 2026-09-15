@@ -1,0 +1,207 @@
+{{define "content"}}
+  {{$game := .Data.Game}}
+  {{$maths := .Data.Maths}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>{{$game.Name}}</h1>
+      <div class="chips">
+        <span class="chip">Return {{$maths.Percent}}</span>
+        <span class="chip">{{$game.Volatility}} volatility</span>
+        <a class="chip" href="/casino">All games</a>
+      </div>
+    </div>
+    <div class="panel-body"><p class="muted">{{$game.Blurb}}</p></div>
+  </section>
+
+  {{if .User}}
+    <div class="arcade machine"
+         data-game="{{$game.Key}}"
+         data-reels="{{$game.ReelCount}}"
+         data-rows="{{$game.Rows}}"
+         data-strips="{{.Data.StripsJSON}}"
+         {{if .Data.FreeJSON}}data-freestrips="{{.Data.FreeJSON}}"{{end}}
+         data-glyphs="{{.Data.GlyphsJSON}}"
+         data-csrf="{{.CSRF}}">
+      <div class="arcade-marquee">
+        <h2>{{$game.Name}}</h2>
+        <div class="arcade-lights"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="arcade-stage">
+        <canvas id="slot-canvas" class="slot-canvas" aria-label="The reels"></canvas>
+        <div class="arcade-readout">
+          <span class="message" id="spin-message">Pick a stake and spin.</span>
+          <span id="spin-win" class="win-line"></span>
+        </div>
+        <form class="arcade-controls" id="spin-form"
+              method="post" action="/casino/{{$game.Key}}/spin">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <label>Stake
+            <select name="stake" id="stake">
+              {{range $game.StakeLevels}}<option value="{{btc .}}">{{btc .}} BTC</option>{{end}}
+            </select>
+          </label>
+          <button type="submit" id="spin-button" class="btn-arcade">Spin</button>
+          <span class="arcade-balance">Balance <strong id="balance">{{btc .BalanceSat}}</strong> BTC</span>
+        </form>
+        <noscript>
+          <p class="notice warn">
+            This machine needs JavaScript to show the reels turning. Your spins
+            are still recorded and checkable from
+            <a href="/casino/history">your spin history</a>.
+          </p>
+        </noscript>
+      </div>
+      <div class="bigwin" id="bigwin">
+        <span class="headline">BIG WIN</span>
+        <span class="amount"></span>
+      </div>
+    </div>
+    <script src="/static/slots.js"></script>
+
+    {{with .Data.Seed}}
+      <section class="panel">
+        <div class="panel-head"><h2>The seed behind your spins</h2></div>
+        <div class="panel-body stack">
+          <p class="muted">
+            We drew a secret seed and published its fingerprint below before you
+            spun anything. Every spin you take is that seed, your own seed and a
+            counter that never repeats. When you rotate the pair we publish the
+            secret, and you can replay every spin you took under it.
+          </p>
+          <dl class="facts">
+            <div><dt>Commitment</dt><dd class="mono small">{{.Commitment}}</dd></div>
+            <div><dt>Your seed</dt><dd class="mono small">{{.ClientSeed}}</dd></div>
+            <div><dt>Next spin</dt><dd>#{{.NextNonce}}</dd></div>
+          </dl>
+          <form method="post" action="/casino/seed" class="inline-form">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="back" value="/casino/{{$game.Key}}">
+            <label>Your seed
+              <input type="text" name="client_seed" maxlength="64" value="{{.ClientSeed}}">
+            </label>
+            <button class="secondary" type="submit">Set seed</button>
+          </form>
+          <form method="post" action="/casino/rotate" class="inline-form">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="back" value="/casino/{{$game.Key}}">
+            <button class="secondary" type="submit">Publish this seed and start a new one</button>
+          </form>
+        </div>
+      </section>
+    {{end}}
+
+    {{if .Data.Recent}}
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Your last spins</h2>
+          <a class="chip" href="/casino/history">All spins</a>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>When</th><th class="num">Stake</th><th class="num">Returned</th><th></th></tr></thead>
+            <tbody>
+              {{range .Data.Recent}}
+                <tr>
+                  <td class="small">{{datetime .CreatedAt}}</td>
+                  <td class="num">{{btc .StakeSat}}</td>
+                  <td class="num {{if gt .WinSat 0}}good{{end}}">{{btc .WinSat}}</td>
+                  <td><a class="small" href="/casino/spins/{{.ID}}">Check it</a></td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {{end}}
+  {{else}}
+    <section class="panel">
+      <div class="panel-body">
+        <p class="notice warn">
+          <a href="/login">Sign in</a> or <a href="/register">open an account</a>
+          to play. The paytable and the return figure below are the same
+          whether you are signed in or not.
+        </p>
+      </div>
+    </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Paytable</h2></div>
+    <div class="panel-body">
+      <p class="muted small">
+        {{if $game.Ways}}
+          Wins pay left to right on adjacent reels, multiplied by how many ways
+          the symbols can be combined. Every symbol pays at once.
+        {{else}}
+          Wins pay left to right along a payline, at these multiples of the
+          stake on that line. Each line pays its best combination only.
+        {{end}}
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Symbol</th><th>Pays</th></tr></thead>
+          <tbody>
+            {{range .Data.Paytable}}
+              <tr>
+                <td><span class="symbol">{{.Symbol.Glyph}}</span> {{.Symbol.Name}}</td>
+                <td class="small">
+                  {{if .Note}}<span class="muted">{{.Note}}</span>{{end}}
+                  {{range .Pays}}<span class="pay">{{.Count}} &rarr; {{payX100 .X100}}</span>{{end}}
+                </td>
+              </tr>
+            {{end}}
+            {{if $game.ScatterPayX100}}
+              <tr>
+                <td>Scatter wins</td>
+                <td class="small">
+                  {{range $count, $value := $game.ScatterPayX100}}
+                    {{if gt $value 0}}<span class="pay">{{$count}} &rarr; {{payX100 $value}} of the total stake</span>{{end}}
+                  {{end}}
+                </td>
+              </tr>
+            {{end}}
+            {{if $game.HasFeature}}
+              <tr>
+                <td>Free spins</td>
+                <td class="small">
+                  {{range $count, $spins := $game.FreeSpinsFor}}
+                    {{if gt $spins 0}}<span class="pay">{{$count}} scatters &rarr; {{$spins}} spins</span>{{end}}
+                  {{end}}
+                  <div class="muted">
+                    Line wins during free spins pay {{payX100 $game.FreeMultiplierX100}}.
+                    A round awards at most {{$game.MaxFreeSpins}} spins in total.
+                  </div>
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>The numbers behind this machine</h2></div>
+    <div class="panel-body">
+      <dl class="facts">
+        <div><dt>Return to player</dt><dd><strong>{{$maths.Percent}}</strong></dd></div>
+        <div><dt>House edge</dt><dd>{{printf "%.2f%%" (mul $maths.HouseEdge 100.0)}}</dd></div>
+        <div><dt>From the base game</dt><dd>{{printf "%.2f%%" (mul $maths.BaseLineRTP 100.0)}}</dd></div>
+        {{if $game.HasFeature}}
+          <div><dt>From free spins</dt><dd>{{printf "%.2f%%" (mul $maths.FeatureRTP 100.0)}}</dd></div>
+          <div><dt>Feature starts</dt>
+            <dd>about 1 spin in {{printf "%.0f" (oneIn $maths.TriggerProbability)}}</dd></div>
+          <div><dt>Average feature</dt><dd>{{printf "%.1f" $maths.ExpectedFreeSpins}} spins</dd></div>
+        {{end}}
+        <div><dt>Spins that pay something</dt><dd>{{printf "%.1f%%" (mul $maths.HitFrequency 100.0)}}</dd></div>
+      </dl>
+      <p class="muted small">
+        The return, its split and the feature figures are exact: they are summed
+        over every outcome the reels can produce. The reels drawn above are the
+        machine's real strips — the spin animation scrolls the same published
+        strip your replay script would, and lands on the stops the server fixed
+        before the reels started turning.
+      </p>
+    </div>
+  </section>
+{{end}}

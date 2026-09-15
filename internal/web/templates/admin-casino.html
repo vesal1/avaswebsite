@@ -1,0 +1,130 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Casino floor</h1>
+      <div class="chips">
+        <a class="chip" href="/admin">Back office</a>
+        <a class="chip" href="/casino/fairness">Published fairness page</a>
+      </div>
+    </div>
+    <div class="panel-body">
+      <dl class="facts">
+        <div><dt>Staked</dt><dd>{{btc .Data.StakedSat}} BTC</dd></div>
+        <div><dt>Returned</dt><dd>{{btc .Data.ReturnedSat}} BTC</dd></div>
+        <div><dt>Held</dt><dd>{{btc .Data.HoldSat}} BTC</dd></div>
+        <div><dt>House revenue account</dt><dd>{{btc .Data.HouseSat}} BTC</dd></div>
+      </dl>
+      <p class="muted small">
+        The house revenue account carries the sportsbook and the casino
+        together, so it will not equal the casino hold on its own.
+      </p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>By machine</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Machine</th><th class="num">Published</th><th class="num">Spins</th>
+              <th class="num">Players</th><th class="num">Staked</th><th class="num">Returned</th>
+              <th class="num">Actual</th><th class="num">Gap</th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Rows}}
+            <tr>
+              <td>
+                <a href="/casino/{{.Game.Key}}">{{.Game.Name}}</a>
+                <div class="muted small">
+                  {{.Game.ReelCount}}&times;{{.Game.Rows}}{{if .Game.Ways}}, 1024 ways{{else}}, {{len .Game.Lines}} lines{{end}}
+                  · {{.Game.Volatility}}
+                </div>
+              </td>
+              <td class="num">{{.Maths.Percent}}</td>
+              <td class="num">{{.Totals.Spins}}</td>
+              <td class="num">{{.Totals.Players}}</td>
+              <td class="num">{{btc .Totals.StakeSat}}</td>
+              <td class="num">{{btc .Totals.WinSat}}</td>
+              <td class="num">{{if .Totals.Spins}}{{pct .Totals.ReturnBps}}{{else}}—{{end}}</td>
+              <td class="num">{{if .Totals.Spins}}{{pct .GapBps}}{{else}}—{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-body">
+      <p class="muted small">
+        A gap between the published and actual return is variance until the
+        spin count is large. It is not a dial: the published figure comes from
+        the reel strips, and the only way to change what a machine returns is
+        to change the strips or the paytable in the source and ship it.
+      </p>
+    </div>
+  </section>
+
+  {{if .Data.TableRows}}
+    <section class="panel">
+      <div class="panel-head"><h2>Table games</h2></div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Game</th><th class="num">Published</th><th class="num">Rounds</th>
+                <th class="num">Players</th><th class="num">Staked</th><th class="num">Returned</th>
+                <th class="num">Actual</th><th class="num">Gap</th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.TableRows}}
+              <tr>
+                <td><a href="/casino/{{.Totals.GameKey}}">{{title .Totals.GameKey}}</a></td>
+                <td class="num">{{pct .PublishedBps}}</td>
+                <td class="num">{{.Totals.Spins}}</td>
+                <td class="num">{{.Totals.Players}}</td>
+                <td class="num">{{btc .Totals.StakeSat}}</td>
+                <td class="num">{{btc .Totals.WinSat}}</td>
+                <td class="num">{{if .Totals.Spins}}{{pct .Totals.ReturnBps}}{{else}}—{{end}}</td>
+                <td class="num">{{if .Totals.Spins}}{{pct .GapBps}}{{else}}—{{end}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      <div class="panel-body">
+        <p class="muted small">
+          Blackjack's published figure assumes the printed strategy card;
+          players who misplay return the house more, and that reads here as a
+          negative gap that is their play, not a fault. Mines' figure is the
+          house factor every ladder step pays.
+        </p>
+      </div>
+    </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Biggest single rounds</h2></div>
+    {{if .Data.BiggestWins}}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>When</th><th>Machine</th><th class="num">Player</th><th class="num">Stake</th>
+                <th class="num">Paid</th><th class="num">Multiple</th><th></th></tr>
+          </thead>
+          <tbody>
+            {{range .Data.BiggestWins}}
+              <tr>
+                <td class="small">{{datetime .CreatedAt}}</td>
+                <td>{{.GameKey}}</td>
+                <td class="num"><a href="/admin/players/{{.UserID}}">{{.UserID}}</a></td>
+                <td class="num">{{btc .StakeSat}}</td>
+                <td class="num good">{{btc .WinSat}}</td>
+                <td class="num">{{if .StakeSat}}{{div .WinSat .StakeSat}}&times;{{end}}</td>
+                <td><a class="small" href="/casino/spins/{{.ID}}">Check it</a></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <p class="empty">Nothing has paid out yet.</p>
+    {{end}}
+  </section>
+{{end}}

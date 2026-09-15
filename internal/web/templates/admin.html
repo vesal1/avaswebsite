@@ -1,0 +1,136 @@
+{{define "content"}}
+  {{$ctx := .}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Back office</h1>
+      <div class="chips">
+        <a class="chip" href="/admin/events">Events</a>
+        <a class="chip" href="/admin/poker">Poker</a>
+        <a class="chip" href="/admin/casino">Casino</a>
+        <a class="chip" href="/admin/players">Players</a>
+        <a class="chip" href="/admin/adjustments">Adjustments</a>
+        <a class="chip" href="/admin/offers">Offers</a>
+        <a class="chip" href="/admin/withdrawals">Withdrawals</a>
+        <a class="chip" href="/admin/flags">Flags</a>
+        <a class="chip" href="/admin/kyc">Verification</a>
+      </div>
+    </div>
+  </section>
+
+  {{if .Data.LedgerProblems}}
+    <div class="notice bad">
+      <strong>The ledger does not balance.</strong> Stop taking bets and
+      investigate before anything else.
+      <ul>{{range .Data.LedgerProblems}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>Ledger</h2><span class="muted small">All accounts sum to zero when healthy</span></div>
+    <div class="panel-body">
+      <div class="stat-grid">
+        {{range $account, $balance := .Data.Accounts}}
+          <div class="stat">
+            <div class="label">{{title $account}}</div>
+            <div class="value">{{btc $balance}}</div>
+          </div>
+        {{end}}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Bitcoin</h2>
+      <span class="tag">{{.Data.Provider}} · {{.Data.Network}}</span>
+    </div>
+    <div class="panel-body stack">
+      {{if .Data.WalletErr}}
+        <div class="notice bad">The wallet backend is unreachable: {{.Data.WalletErr}}</div>
+      {{else}}
+        <div class="stat-grid">
+          <div class="stat"><div class="label">Hot wallet spendable</div><div class="value">{{btc .Data.HotWallet}}</div></div>
+          <div class="stat"><div class="label">Owed to customers</div><div class="value">{{btc (index .Data.Accounts "user_cash")}}</div></div>
+        </div>
+        {{if lt .Data.HotWallet (index .Data.Accounts "user_cash")}}
+          <div class="notice warn">
+            The hot wallet holds less than customers are owed. That is normal if
+            the rest is in cold storage, and a problem if it is not.
+          </div>
+        {{end}}
+      {{end}}
+      <form method="post" action="/admin/sync-deposits">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button class="secondary" type="submit">Sync deposits now</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Withdrawals waiting</h2>
+      <a href="/admin/withdrawals">Open queue</a>
+    </div>
+    {{if .Data.Withdrawals}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Requested</th><th>Account</th><th class="num">Amount</th><th>Status</th></tr></thead>
+          <tbody>
+            {{range .Data.Withdrawals}}
+              <tr>
+                <td class="small">{{datetime .RequestedAt}}</td>
+                <td>{{.UserID}}</td>
+                <td class="num">{{btc .AmountSat}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">Nothing waiting.</p>{{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Open compliance flags</h2><a href="/admin/flags">Open queue</a></div>
+    {{if .Data.Flags}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Raised</th><th>Account</th><th>Kind</th><th>Severity</th><th>Detail</th></tr></thead>
+          <tbody>
+            {{range .Data.Flags}}
+              <tr>
+                <td class="small">{{datetime .RaisedAt}}</td>
+                <td>{{.UserID}}</td>
+                <td>{{title .Kind}}</td>
+                <td><span class="tag {{statusTag .Severity}}">{{title .Severity}}</span></td>
+                <td class="muted small">{{.Detail}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">No open flags.</p>{{end}}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Events awaiting settlement</h2></div>
+    {{if .Data.Awaiting}}
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Event</th><th>Sport</th><th>Started</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {{range .Data.Awaiting}}
+              <tr>
+                <td>{{.Name}}</td>
+                <td class="muted">{{sportName .SportKey}}</td>
+                <td class="small">{{datetime .StartsAt}}</td>
+                <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+                <td><a href="/admin/events/{{.ID}}">Trade / settle</a></td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}<p class="empty">Nothing waiting to be settled.</p>{{end}}
+  </section>
+{{end}}

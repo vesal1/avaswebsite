@@ -1,0 +1,123 @@
+{{define "content"}}
+  {{$round := .Data.Round}}
+  {{$verified := .Data.Verified}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>{{title $round.GameKey}} round {{$round.ID}}</h1>
+      <div class="chips">
+        <a class="chip" href="/casino/history">My history</a>
+        <a class="chip" href="/casino/{{$round.GameKey}}">Back to the table</a>
+      </div>
+    </div>
+    <div class="panel-body">
+      <dl class="facts">
+        <div><dt>Played</dt><dd>{{datetime $round.CreatedAt}}</dd></div>
+        <div><dt>Staked</dt><dd>{{btc $round.StakeSat}} BTC</dd></div>
+        <div><dt>Returned</dt><dd>{{btc $round.WinSat}} BTC</dd></div>
+        <div><dt>Result</dt><dd><span class="tag {{statusTag $round.Status}}">{{$round.Status}}</span></dd></div>
+        <div><dt>Published return</dt><dd>{{pct $round.RTPBps}}</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Checking it</h2></div>
+    <div class="panel-body stack">
+      <dl class="facts">
+        <div><dt>Commitment</dt><dd class="mono small">{{$round.Commitment}}</dd></div>
+        <div><dt>Your seed</dt><dd class="mono small">{{$round.ClientSeed}}</dd></div>
+        <div><dt>Nonce</dt><dd>{{$round.Nonce}}</dd></div>
+        <div><dt>Server seed</dt>
+          <dd class="mono small">{{if $round.ServerSeed}}{{$round.ServerSeed}}{{else}}still sealed{{end}}</dd></div>
+      </dl>
+
+      {{if .Data.Problem}}
+        <p class="notice bad">{{.Data.Problem}}</p>
+      {{else if $round.Open}}
+        <p class="notice warn">This round is still in play, so there is nothing
+        to check yet — and its seed stays sealed until it settles.</p>
+      {{else if not $round.Verifiable}}
+        <p class="notice warn">
+          The seed behind this round is still in use, so it has not been
+          published yet. Publish it from <a href="/casino/history">your
+          history</a> — every round taken under it becomes checkable at once.
+        </p>
+      {{else if $verified.Matches}}
+        <p class="notice good">
+          Checked. The published seed hashes to the commitment you were shown
+          before this round, and replaying
+          {{if eq $round.GameKey "blackjack"}}the shuffle and your actions{{else}}the board and your reveals{{end}}
+          produces exactly the result recorded here.
+        </p>
+      {{else}}
+        <p class="notice bad">
+          This round does not replay to what was recorded. That should never
+          happen. Please send us the round number at
+          <a href="mailto:{{.Support}}">{{.Support}}</a>.
+        </p>
+      {{end}}
+    </div>
+  </section>
+
+  {{if $verified.Blackjack}}
+    <section class="panel">
+      <div class="panel-head"><h2>The hand, replayed</h2></div>
+      <div class="panel-body stack">
+        {{$replay := $verified.Blackjack}}
+        <p class="small"><strong>Dealer:</strong>
+          {{range $replay.State.Dealer}}<span class="pay">{{.String}}</span>{{end}}
+        </p>
+        {{range $index, $hand := $replay.State.Player}}
+          <p class="small"><strong>Hand {{add $index 1}}:</strong>
+            {{range $hand.Cards}}<span class="pay">{{.String}}</span>{{end}}
+            {{if $hand.Busted}}<span class="tag bad">bust</span>{{end}}
+            {{if gt $hand.BetUnits 1}}<span class="tag warn">doubled</span>{{end}}
+          </p>
+        {{end}}
+        {{if $replay.State.Actions}}
+          <p class="muted small">Your plays, in order:
+            {{range $replay.State.Actions}}<span class="pay">{{.}}</span>{{end}}
+          </p>
+        {{end}}
+        <p class="muted small">
+          The deck order is the committed seed's keystream applied to a
+          Fisher–Yates shuffle of the 52 cards, dealt player, dealer up,
+          player, dealer hole, then off the top. The algorithm is on
+          <a href="/casino/fairness">the fairness page</a> if you would rather
+          run it yourself.
+        </p>
+      </div>
+    </section>
+  {{end}}
+
+  {{if $verified.MinesState}}
+    <section class="panel">
+      <div class="panel-head"><h2>The board, recomputed</h2></div>
+      <div class="panel-body stack">
+        <div class="reels static">
+          {{$state := $verified.MinesState.State}}
+          {{$mines := $verified.Mines}}
+          {{range $col := seq 5}}
+            <div class="reel">
+              {{range $row := seq 5}}
+                {{$cell := add (mulInt $row 5) $col}}
+                <div class="cell">
+                  {{- $shown := false -}}
+                  {{- range $state.Revealed}}{{if eq . $cell}}💎{{$shown = true}}{{end}}{{end -}}
+                  {{- if eq $state.Hit $cell}}💥{{$shown = true}}{{end -}}
+                  {{- if not $shown}}{{range $mines}}{{if eq . $cell}}💣{{end}}{{end}}{{end -}}
+                </div>
+              {{end}}
+            </div>
+          {{end}}
+        </div>
+        <p class="muted small">
+          The mine layout is the first {{$verified.MinesState.State.MineCount}}
+          entries of a fair shuffle of the 25 tiles, drawn from the published
+          seed. Gems are your reveals; the bomb tiles are where the mines were
+          all along.
+        </p>
+      </div>
+    </section>
+  {{end}}
+{{end}}

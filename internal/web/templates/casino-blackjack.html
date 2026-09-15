@@ -1,0 +1,155 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head">
+      <h1>Blackjack</h1>
+      <div class="chips">
+        <span class="chip">Return {{pct .Data.RTPBps}} with the card below</span>
+        <span class="chip">Skill game</span>
+        <a class="chip" href="/casino">All games</a>
+      </div>
+    </div>
+    <div class="panel-body">
+      <p class="muted">
+        One deck, freshly shuffled from a committed seed every hand. Dealer
+        stands on all 17s, blackjack pays 3:2, double on any two, split once.
+        This is the skill game on the floor: your decisions set the return,
+        the strategy card that maximises it is printed at the bottom of this
+        page, and the hint under the table quotes it on every hand.
+      </p>
+    </div>
+  </section>
+
+  {{if .User}}
+    <div class="arcade" id="bj" data-csrf="{{.CSRF}}">
+      <div class="arcade-marquee">
+        <h2>Blackjack</h2>
+        <div class="arcade-lights"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="arcade-stage">
+        <div class="bj-felt" id="bj-felt">
+          <div class="bj-row">
+            <span class="bj-label">Dealer</span>
+            <div class="bj-hand" id="bj-dealer">
+              <div class="bj-cards" id="bj-dealer-cards"></div>
+              <span class="total-badge" id="bj-dealer-total" hidden></span>
+            </div>
+          </div>
+          <div id="bj-banner"></div>
+          <div class="bj-row">
+            <span class="bj-label">You</span>
+            <div class="bj-hands" id="bj-hands"></div>
+          </div>
+        </div>
+        <div class="arcade-readout">
+          <span class="message" id="bj-message">Pick a stake and deal.</span>
+          <span id="bj-win" class="win-line"></span>
+        </div>
+        <span class="hint-pill" id="bj-hint" hidden>The card says: <strong id="bj-hint-action"></strong></span>
+        <div class="bj-actions" id="bj-actions" hidden>
+          <button class="btn-arcade blue small" data-action="hit" type="button">Hit</button>
+          <button class="btn-arcade small" data-action="stand" type="button">Stand</button>
+          <button class="btn-arcade green small" data-action="double" type="button">Double</button>
+          <button class="btn-arcade red small" data-action="split" type="button">Split</button>
+        </div>
+        <form class="arcade-controls" id="bj-deal-form">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <label>Stake
+            <select id="bj-stake">
+              {{range .Data.StakeLevels}}<option value="{{btc .}}">{{btc .}} BTC</option>{{end}}
+            </select>
+          </label>
+          <button type="submit" id="bj-deal" class="btn-arcade">Deal</button>
+          <span class="arcade-balance">Balance <strong id="bj-balance">{{btc .BalanceSat}}</strong> BTC</span>
+        </form>
+        <noscript>
+          <p class="notice warn">The table needs JavaScript to deal. Your rounds
+          stay recorded and checkable from <a href="/casino/history">your history</a>.</p>
+        </noscript>
+      </div>
+    </div>
+    <script src="/static/blackjack.js"></script>
+
+    {{with .Data.Seed}}
+      <section class="panel">
+        <div class="panel-head"><h2>The seed behind your hands</h2></div>
+        <div class="panel-body stack">
+          <p class="muted">
+            The deck order for every hand comes from the committed seed below
+            plus a counter, exactly like a slot spin. Publish the seed from
+            <a href="/casino/history">your history</a> when a hand is finished
+            and you can replay every deal, card for card. While a hand is open
+            the pair cannot be published — that would hand you the deck.
+          </p>
+          <dl class="facts">
+            <div><dt>Commitment</dt><dd class="mono small">{{.Commitment}}</dd></div>
+            <div><dt>Your seed</dt><dd class="mono small">{{.ClientSeed}}</dd></div>
+            <div><dt>Next round</dt><dd>#{{.NextNonce}}</dd></div>
+          </dl>
+        </div>
+      </section>
+    {{end}}
+  {{else}}
+    <section class="panel"><div class="panel-body">
+      <p class="notice warn"><a href="/login">Sign in</a> or
+      <a href="/register">open an account</a> to play. The rules, the strategy
+      card and the return below are the same either way.</p>
+    </div></section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>The strategy card</h2></div>
+    <div class="panel-body stack">
+      <p class="muted small">
+        Computed for this table's exact rules, not copied from a book: the
+        derivation lives in the source and the tests re-derive it. Following it
+        returns {{pct .Data.RTPBps}} of everything staked — measured by playing
+        this table's real engine twenty million rounds under this card.
+        <strong>H</strong> hit, <strong>S</strong> stand, <strong>D</strong>
+        double (hit if you no longer can), <strong>P</strong> split.
+      </p>
+      <div class="table-scroll">
+        <table class="strategy-table">
+          <thead>
+            <tr><th>Hard</th>{{range .Data.Upcards}}<th>{{.}}</th>{{end}}</tr>
+          </thead>
+          <tbody>
+            {{range .Data.StrategyHard}}
+              <tr><th>{{.Label}}</th>{{range .Cells}}<td class="{{.}}">{{.}}</td>{{end}}</tr>
+            {{end}}
+          </tbody>
+          <thead>
+            <tr><th>Soft</th>{{range .Data.Upcards}}<th>{{.}}</th>{{end}}</tr>
+          </thead>
+          <tbody>
+            {{range .Data.StrategySoft}}
+              <tr><th>{{.Label}}</th>{{range .Cells}}<td class="{{.}}">{{.}}</td>{{end}}</tr>
+            {{end}}
+          </tbody>
+          <thead>
+            <tr><th>Pairs</th>{{range .Data.Upcards}}<th>{{.}}</th>{{end}}</tr>
+          </thead>
+          <tbody>
+            {{range .Data.StrategyPair}}
+              <tr><th>{{.Label}}</th>{{range .Cells}}<td class="{{.}}">{{.}}</td>{{end}}</tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>House rules, all of them</h2></div>
+    <div class="panel-body stack">
+      <ul class="small">
+        <li>One deck, shuffled fresh every round from the committed seed. No cut card games, no penetration tricks — every hand starts from 52.</li>
+        <li>Dealer stands on all 17s, soft ones included.</li>
+        <li>Blackjack pays 3:2. A 6:5 table is a 1.4% pay cut dressed as a side rule, and we do not run one.</li>
+        <li>Double on any first two cards. No double after a split.</li>
+        <li>Split any pair once. Split aces get one card each; a split 21 is 21, not blackjack.</li>
+        <li>Dealer peeks with an ace or a ten showing, so a double or split is never lost to a dealer natural.</li>
+        <li>No insurance. It is a separate wager returning about 92% dressed up as protection, and we decline to sell it.</li>
+      </ul>
+    </div>
+  </section>
+{{end}}

@@ -1,0 +1,87 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>Verify a hand</h1></div>
+    <div class="panel-body stack">
+      <p class="muted">
+        Paste the details from any finished hand and this page will recompute
+        the deck in front of you. The same check is described below so you can
+        write your own script and not take our word for any of it.
+      </p>
+      <form method="post" action="/poker/verify" class="stack">
+        <div class="field">
+          <label for="commitment">Commitment (published before the deal)</label>
+          <input type="text" id="commitment" name="commitment" value="{{.Data.Commitment}}" required>
+        </div>
+        <div class="field">
+          <label for="server_seed">Server seed (published after the hand)</label>
+          <input type="text" id="server_seed" name="server_seed" value="{{.Data.ServerSeed}}" required>
+        </div>
+        <div class="field">
+          <label for="client_seed">Combined player seed</label>
+          <input type="text" id="client_seed" name="client_seed" value="{{.Data.ClientSeed}}">
+        </div>
+        <div class="field">
+          <label for="nonce">Hand number</label>
+          <input type="number" id="nonce" name="nonce" value="{{.Data.Nonce}}">
+        </div>
+        <button type="submit">Recompute the deck</button>
+      </form>
+    </div>
+  </section>
+
+  {{if .Data.Verified}}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Verified</h2>
+        <span class="tag good">Commitment matches</span>
+      </div>
+      <div class="panel-body stack">
+        <p>
+          The seed hashes to exactly the commitment published before the deal,
+          so this is the deck that hand was played with.
+        </p>
+        <div class="address">{{range .Data.Deck}}{{.}} {{end}}</div>
+        <p class="muted small">
+          Cards are dealt from the top: two rounds of one card to each player
+          starting left of the button, then a burn and three for the flop, a
+          burn and one for the turn, a burn and one for the river.
+        </p>
+      </div>
+    </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>The algorithm, in full</h2></div>
+    <div class="panel-body stack">
+      <ol class="muted">
+        <li>Commitment is <code>SHA-256(server_seed)</code>, published before the deal.</li>
+        <li>
+          The keystream is <code>HMAC-SHA256(server_seed, client_seed + "|" + nonce + "|" + counter)</code>,
+          with a big-endian 8-byte counter starting at zero and incrementing for
+          each further 32-byte block.
+        </li>
+        <li>
+          The deck starts in order, card 0 to 51, where
+          <code>rank = card / 4</code> (0 is a two, 12 an ace) and
+          <code>suit = card % 4</code> (clubs, diamonds, hearts, spades).
+        </li>
+        <li>
+          Fisher-Yates from the top: for <code>i</code> from 51 down to 1, draw
+          an index in <code>[0, i]</code> and swap.
+        </li>
+        <li>
+          Indexes are drawn by rejection sampling, not modulo. Read enough
+          whole bytes to cover the range, reject any value at or above
+          <code>floor(2^bits / n) × n</code>, and draw again. A plain modulo
+          would make low-numbered cards fractionally likelier, which is a small
+          bias and not one we are willing to have.
+        </li>
+        <li>
+          The combined player seed is
+          <code>SHA-256(seed₁ ‖ 0x00 ‖ seed₂ ‖ 0x00 ‖ …)</code> over the seated
+          players in seat order, so no single player can cancel another's.
+        </li>
+      </ol>
+    </div>
+  </section>
+{{end}}

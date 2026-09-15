@@ -1,0 +1,71 @@
+{{define "content"}}
+  <section class="panel">
+    <div class="panel-head"><h1>Betting rules</h1></div>
+    <div class="panel-body stack">
+      <h2>The basics</h2>
+      <ul>
+        <li>All prices are decimal odds. A price of 2.50 returns 2.5 times the stake, the stake included.</li>
+        <li>Balances, stakes and payouts are in bitcoin, counted in satoshi. Fractions of a satoshi are never paid.</li>
+        <li>A bet cannot be cancelled once it is accepted.</li>
+        <li>Minimum stake {{btc .Data.Config.MinStakeSat}} BTC, maximum stake {{btc .Data.Config.MaxStakeSat}} BTC.</li>
+        <li>The most any single bet can return is {{btc .Data.Config.MaxPayoutSat}} BTC.</li>
+        <li>A multiple may carry at most {{.Data.Config.MaxParlayLegs}} selections.</li>
+      </ul>
+
+      <h2>Price changes</h2>
+      <p>
+        Prices move. If a price changes between adding a selection and placing
+        the bet, we refuse the bet and show you the new price, unless you have
+        ticked “accept price changes”. A bet is always struck at the live price,
+        never the one that has already moved.
+      </p>
+
+      <h2>Voids and refunds</h2>
+      <ul>
+        <li>An abandoned event voids every market on it, and stakes are returned.</li>
+        <li>A void leg inside a multiple settles at a price of 1.00; the rest of the multiple stands.</li>
+        <li>A withdrawn competitor voids bets on them in outright and matchup markets.</li>
+        <li>
+          If the actual result was never among the prices offered, for example an
+          exact score we did not price, the market is voided rather than settled
+          as a loss.
+        </li>
+        <li>A whole-number handicap or total that lands exactly on the line is a push and the stake is returned.</li>
+      </ul>
+
+      <h2>Multiples</h2>
+      <p>
+        Selections from the same event cannot be combined in a multiple: their
+        outcomes are related, so a combined price would not reflect the real
+        chance of both landing.
+      </p>
+
+      <h2>Asian lines</h2>
+      <p>
+        Quarter lines such as -0.25 and -0.75 split your stake across the two
+        neighbouring half lines. That is why an Asian bet can return half your
+        stake, or win on one half and push on the other.
+      </p>
+
+      <h2>Settlement</h2>
+      <p>
+        Markets are settled from the official result. Where a result cannot
+        decide a market on its own, a trader settles it by hand. We would rather
+        settle a market late than settle it wrongly, because a payout cannot be
+        taken back.
+      </p>
+
+      <h2>Every market we offer</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Market</th><th>How it settles</th></tr></thead>
+          <tbody>
+            {{range .Data.Markets}}
+              <tr><td><strong>{{.Name}}</strong></td><td class="muted">{{.Description}}</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+{{end}}

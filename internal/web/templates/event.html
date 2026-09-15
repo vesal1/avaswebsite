@@ -1,0 +1,75 @@
+{{define "content"}}
+  {{$ctx := .}}
+  {{$event := .Data.Event}}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h1>{{$event.Name}}</h1>
+        <div class="sub muted small">
+          <a href="/sports/{{$event.SportKey}}">{{.Data.Sport.Name}}</a>
+          {{if $event.Competition}} · {{$event.Competition}}{{end}}
+          · {{kickoff $event.StartsAt}}
+          {{if $event.Venue}} · {{$event.Venue}}{{end}}
+        </div>
+      </div>
+      <span class="tag {{statusTag $event.Status}}">{{title $event.Status}}</span>
+    </div>
+    {{if not .Data.Open}}
+      <div class="panel-body">
+        <div class="notice warn">
+          This event is {{$event.Status}}. No new bets are being accepted.
+        </div>
+      </div>
+    {{end}}
+  </section>
+
+  {{if .Data.Participants}}
+  <section class="panel">
+    <div class="panel-head"><h2>Field</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Competitor</th><th>Side</th><th class="num">Score</th><th class="num">Finish</th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Participants}}
+            <tr>
+              <td>{{.Name}}{{if .Withdrawn}} <span class="tag warn">Withdrawn</span>{{end}}</td>
+              <td class="muted">{{title .HomeAway}}</td>
+              <td class="num">{{if .HasScore}}{{.Score}}{{else}}—{{end}}</td>
+              <td class="num">{{if .FinishPosition}}{{.FinishPosition}}{{else}}—{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="panel">
+    <div class="panel-head"><h2>{{len .Data.Markets}} markets</h2></div>
+    {{range .Data.Markets}}
+      <div class="market">
+        <div class="market-head">
+          <h3>
+            {{.Title}}
+            {{if .HasLine}}<span class="muted">{{line .LineX100 .HasLine}}</span>{{end}}
+            {{if .Period}}<span class="muted small">· {{.Period}}</span>{{end}}
+          </h3>
+          <span class="tag {{statusTag .Status}}">{{title .Status}}</span>
+        </div>
+        {{with marketDoc .Kind}}<p class="market-rule">{{.}}</p>{{end}}
+        <div class="price-row">
+          {{$market := .}}
+          {{range .Selections}}
+            {{template "price" dict "Selection" . "Market" $market
+                "Open" $ctx.Data.Open "OnSlip" $ctx.OnSlip "CSRF" $ctx.CSRF
+                "OddsFormat" $ctx.OddsFormat "Next" (print "/events/" $event.ID)}}
+          {{end}}
+        </div>
+      </div>
+    {{else}}
+      <p class="empty">No markets have been priced on this event yet.</p>
+    {{end}}
+  </section>
+{{end}}

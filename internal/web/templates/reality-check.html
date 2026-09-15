@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="auth-page">
+  <section class="panel">
+    <div class="panel-head"><h1>You have been playing for {{.Data.Elapsed}}</h1></div>
+    <div class="panel-body stack">
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Staked this session</div><div class="value">{{btc .Data.Staked}}</div></div>
+        <div class="stat">
+          <div class="label">{{if gt .Data.Net 0}}Down{{else}}Up{{end}} this session</div>
+          <div class="value">{{btc .Data.Net}}</div>
+        </div>
+      </div>
+      <p class="muted">
+        Take a moment before carrying on. You can set a loss or stake limit, or
+        take a break, from your account page at any time.
+      </p>
+      <form method="post" action="/reality-check" class="field-row">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="next" value="/">
+        <button type="submit" name="action" value="continue">Carry on</button>
+        <button class="secondary" type="submit" name="action" value="stop">Sign out</button>
+      </form>
+      <a class="muted small" href="/account">Set a limit instead</a>
+    </div>
+  </section>
+</div>
+{{end}}

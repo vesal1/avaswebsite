@@ -1,0 +1,186 @@
+{{define "content"}}
+  {{$ctx := .}}
+  {{$s := .Data.Summary}}
+  <section class="panel">
+    <div class="panel-head"><h1>Wallet</h1><span class="tag">{{$s.Network}}</span></div>
+    <div class="panel-body">
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="label">Available</div>
+          <div class="value">{{btc $s.BalanceSat}}</div>
+          <div class="muted small">{{fiat $s.BalanceSat .Data.Rate .Data.Currency}}</div>
+        </div>
+        <div class="stat"><div class="label">On open bets</div><div class="value">{{btc $s.EscrowedInBetsSat}}</div></div>
+        <div class="stat"><div class="label">Withdrawals in flight</div><div class="value">{{btc $s.PendingWithdrawSat}}</div></div>
+        {{if .Data.Bonus.BonusBalanceSat}}
+        <div class="stat">
+          <div class="label">Bonus (not withdrawable)</div>
+          <div class="value">{{btc .Data.Bonus.BonusBalanceSat}}</div>
+        </div>
+        {{end}}
+      </div>
+      {{if .Data.Bonus.Active}}
+        <div class="notice warn">
+          You have an active bonus with {{btc .Data.Bonus.TotalRemainingWageringSat}} BTC
+          of wagering left, and withdrawals are paused until it clears. You can
+          finish the wagering, or give the bonus up from your
+          <a href="/account">account page</a> — your own money is not affected.
+        </div>
+      {{end}}
+      <p class="hint">
+        Fiat values are indicative only, converted at a reference rate. Your
+        balance is held in bitcoin and settled in bitcoin.
+      </p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Deposit</h2></div>
+    <div class="panel-body stack">
+      {{if $s.DepositAddress}}
+        <p>Send bitcoin to this address. It belongs to your account only.</p>
+        <div class="address">{{$s.DepositAddress}}</div>
+        <button class="secondary" type="button" data-copy="{{$s.DepositAddress}}">Copy address</button>
+        <div class="notice info">
+          Deposits are credited after {{$s.Confirmations}} confirmations.
+          The minimum deposit is {{btc $s.MinDepositSat}} BTC. Send only bitcoin
+          on the {{$s.Network}} network: anything else is unrecoverable.
+        </div>
+      {{else}}
+        <p>You do not have a deposit address yet.</p>
+        <form method="post" action="/wallet/address">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button type="submit">Get my deposit address</button>
+        </form>
+      {{end}}
+
+      {{if and .MockWallet (not .IsProd)}}
+        <div class="notice warn">
+          <strong>Development only.</strong> The wallet is simulated. You can
+          pay yourself to walk through the deposit flow; no real bitcoin exists.
+          <form method="post" action="/wallet/simulate" class="field-row" style="margin-top:10px">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <div class="field"><input type="text" name="amount" value="0.01000000" inputmode="decimal"></div>
+            <div class="field" style="flex:0 0 auto"><button class="secondary" type="submit">Simulate a deposit</button></div>
+          </form>
+        </div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Withdraw</h2></div>
+    <div class="panel-body">
+      {{if not .Data.KYCVerified}}
+        <div class="notice warn">
+          Withdrawals need a verified identity. Start verification on your
+          <a href="/account">account page</a>.
+        </div>
+      {{end}}
+      <form method="post" action="/wallet/withdraw" class="stack"
+            data-confirm="Bitcoin payments cannot be reversed. Check the address one more time before confirming.">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="field">
+          <label for="address">Bitcoin address ({{$s.Network}})</label>
+          <input type="text" id="address" name="address" required
+                 placeholder="Paste the address you want to be paid to">
+          <p class="hint">
+            Check this character by character. A payment sent to the wrong
+            address cannot be recovered by us or by anyone else.
+          </p>
+        </div>
+        <div class="field">
+          <label for="amount">Amount (BTC)</label>
+          <input type="text" id="amount" name="amount" inputmode="decimal" required
+                 placeholder="0.01000000">
+          <p class="hint">
+            Minimum {{btc .Data.MinWithdrawal}} BTC. A network fee of
+            {{btc .Data.WithdrawalFee}} BTC is taken on top of the amount you enter.
+          </p>
+        </div>
+        <button type="submit" {{if not .Data.KYCVerified}}disabled{{end}}>Request withdrawal</button>
+      </form>
+    </div>
+  </section>
+
+  {{if .Data.Withdrawals}}
+  <section class="panel">
+    <div class="panel-head"><h2>Withdrawals</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Requested</th><th>Address</th><th class="num">Amount</th>
+              <th class="num">Fee</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Withdrawals}}
+            <tr>
+              <td class="small">{{datetime .RequestedAt}}</td>
+              <td class="small" style="word-break:break-all">{{.Address}}</td>
+              <td class="num">{{btc .AmountSat}}</td>
+              <td class="num">{{btc .FeeSat}}</td>
+              <td>
+                <span class="tag {{statusTag .Status}}">{{title .Status}}</span>
+                {{if .Reason}}<div class="muted small">{{.Reason}}</div>{{end}}
+              </td>
+              <td>
+                {{if or (eq .Status "requested") (eq .Status "review")}}
+                  <form method="post" action="/wallet/withdraw/{{.ID}}/cancel">
+                    <input type="hidden" name="csrf" value="{{$ctx.CSRF}}">
+                    <button class="secondary" type="submit">Cancel</button>
+                  </form>
+                {{end}}
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  {{if .Data.Deposits}}
+  <section class="panel">
+    <div class="panel-head"><h2>Deposits</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Seen</th><th>Transaction</th><th class="num">Amount</th>
+              <th class="num">Confirmations</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {{range .Data.Deposits}}
+            <tr>
+              <td class="small">{{datetime .FirstSeenAt}}</td>
+              <td class="small" style="word-break:break-all">{{.TxID}}:{{.Vout}}</td>
+              <td class="num">{{btc .AmountSat}}</td>
+              <td class="num">{{.Confirmations}}</td>
+              <td><span class="tag {{statusTag .Status}}">{{title .Status}}</span></td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+
+  {{if .Data.Ledger}}
+  <section class="panel">
+    <div class="panel-head"><h2>Account history</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>When</th><th>What</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          {{range .Data.Ledger}}
+            <tr>
+              <td class="small">{{datetime .At}}</td>
+              <td>{{title .Kind}}<div class="muted small">{{.Memo}}</div></td>
+              <td class="num">{{range .Entries}}{{btc .AmountSat}}{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{end}}
+{{end}}
